@@ -1,0 +1,59 @@
+$primary-color: #dab68f;
+$secondary-color: #14b2ba;
+$primary-color-background: #f5f5f5;
+$primary-color-background-light: #f5f5f5;
+$primary-color-light: #666;
+$primary-color-dark: #000;
+$primary-color-text: #fff;
+$primary-color-border: #ccc;
+$primary-color-success: #19be6b;
+$primary-color-warning: #f00;
+$primary-color-error: #f00;
+$primary-color-info: #000;
+$primary-color-disabled: #ccc;
+$primary-color-active: #000;
+$primary-color-hover: #000;
+page {
+  color: #000;
+  background-color: $primary-color-background;
+}
+page,
+.sar-portal {
+  --sar-primary: #14b2ba !important;
+}
+.text-color-orange {
+  color: #ff7700;
+}
+.text-color-secondary {
+  color: $secondary-color;
+}
+.bg-color-primary {
+  background-color: $primary-color-background;
+}
+.bg-color-secondary {
+  background-color: $secondary-color;
+}
+.bg-color-cyan {
+  background-color: rgba(213, 235, 240, 0.2);
+}
+.headline {
+  position: relative;
+  padding-left: 15rpx; /* 为竖线腾出空间 */
+}
+.shadow-default {
+  box-shadow:
+    0 8rpx 32rpx rgba(0, 0, 0, 0.303),
+    0 4rpx 12rpx rgba(0, 0, 0, 0.267);
+}
+
+.headline::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 8rpx;
+  height: 32rpx;
+  background-color: $secondary-color;
+  border-radius: 4rpx;
+}
