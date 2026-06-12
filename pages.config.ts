@@ -8,6 +8,9 @@ export default defineUniPages({
     navigationBarBackgroundColor: '#f8f8f8',
     navigationBarTextStyle: 'black',
     backgroundColor: '#FFFFFF',
+     usingComponents: {
+      'ec-canvas': '/wxcomponents/ec-canvas/ec-canvas',
+    },
   },
   easycom: {
     autoscan: true,

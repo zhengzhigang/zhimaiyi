@@ -8,6 +8,12 @@ declare module '*.vue' {
   export default component
 }
 
+declare module 'html2pdf.js/dist/html2pdf.bundle.min.js' {
+  import html2pdf from 'html2pdf.js'
+
+  export default html2pdf
+}
+
 interface ImportMetaEnv {
   /** 网站标题，应用名称 */
   readonly VITE_APP_TITLE: string
