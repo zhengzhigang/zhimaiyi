@@ -16,6 +16,7 @@ setActivePinia(store)
 export default store
 
 export * from './router'
+export * from './bluetooth'
 // 模块统一导出
 // export * from './token'
 export * from './user'

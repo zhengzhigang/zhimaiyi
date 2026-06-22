@@ -21,6 +21,5 @@ export default defineUniPages({
       '^sar-(.*)': 'sard-uniapp/components/$1/$1.vue',
     },
   },
-  // tabbar 的配置统一在 “./src/tabbar/config.ts” 文件中
   tabBar: tabBar as any,
 })
