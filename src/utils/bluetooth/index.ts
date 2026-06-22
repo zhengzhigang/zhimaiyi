@@ -160,6 +160,7 @@ class BluetoothManager {
       uni.createBLEConnection({
         deviceId,
         success: () => {
+          console.log('连接设备成功', deviceId)
           setTimeout(() => {
             this.discoverServices(deviceId, deviceName).then(resolve)
           }, 1000)
@@ -178,6 +179,7 @@ class BluetoothManager {
       uni.getBLEDeviceServices({
         deviceId,
         success: (res) => {
+          console.log('获取服务成功', res)
           const service = res.services.find(
             (s) => s.uuid.toUpperCase() === SERVICE_UUID.toUpperCase(),
           )

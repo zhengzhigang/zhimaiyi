@@ -63,13 +63,15 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
   async function initAndConnect(targetDeviceName?: string): Promise<boolean> {
     console.log('开始初始化')
     const ok = await bluetoothManager.initBluetooth()
+    console.log('初始化蓝牙', ok)
     if (!ok) return false
 
     const devices = await bluetoothManager.startScan()
-    console.log('devices', devices)
+    console.log('devices', targetDeviceName, devices)
     const target = targetDeviceName
-      ? devices.find((d) => d.name?.includes(targetDeviceName))
+      ? devices.find((d) => d.deviceId?.includes(targetDeviceName))
       : devices[0]
+    console.log('target', target)
 
     if (!target) {
       uni.showToast({ title: '未找到设备', icon: 'none' })
@@ -77,6 +79,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     }
 
     const connected = await bluetoothManager.connectDevice(target.deviceId, target.name || '')
+    console.log('connected', connected)
     if (connected) {
       updateConnectionState()
     }

@@ -18,8 +18,8 @@
         <text class="tip-text">然后点击开始检测</text>
       </view>
 
-      <view class="start-btn" @click="startDetect">
-        <text class="start-btn-text">开始检测</text>
+      <view class="start-btn" :class="{ 'start-btn--loading': loading }" @click="startDetect">
+        <text class="start-btn-text">{{ loading ? '连接中...' : '开始检测' }}</text>
       </view>
     </view>
   </LandscapePage>
@@ -33,6 +33,7 @@ import { useBluetoothStore } from '@/store/bluetooth'
 
 const bluetoothStore = useBluetoothStore()
 const mode = ref<'quick' | 'full'>('quick')
+const loading = ref(false)
 
 onLoad((options) => {
   if (options?.mode) {
@@ -45,32 +46,47 @@ const goBack = () => {
 }
 
 const startDetect = () => {
+  if (loading.value) return
+  // if (!bluetoothStore.isConnected) {
+  //   uni.showToast({
+  //     title: '请正确连接检测设备后检测！',
+  //     icon: 'none',
+  //   })
+  //   return
+  // }
+
   if (!bluetoothStore.isConnected) {
-    uni.showToast({
-      title: '请正确连接检测设备后检测！',
-      icon: 'none',
-    })
+    tryConnect()
     return
   }
-  if (!bluetoothStore.isConnected) {
-    uni.showModal({
-      title: '提示',
-      content: '蓝牙设备未连接，是否尝试连接？',
-      success: (res) => {
-        if (res.confirm) {
-          console.log('开始连接')
-          bluetoothStore.initAndConnect('PULSE').then(() => {
-            if (!bluetoothStore.isConnected) {
-              uni.navigateTo({
-                url: `/pages-health/pulse/detect/index?mode=${mode.value}`,
-              })
-            }
-          })
-        }
-      },
-    })
-    return
-  }
+
+  navigateToDetect()
+}
+
+const tryConnect = () => {
+  loading.value = true
+  bluetoothStore.initAndConnect('1C:91:9D:A0:2B:8B').then(() => {
+    loading.value = false
+    if (bluetoothStore.isConnected) {
+      navigateToDetect()
+    } else {
+      uni.showModal({
+        title: '连接失败',
+        content: '蓝牙设备连接失败，是否重新尝试连接？',
+        success: (res) => {
+          if (res.confirm) {
+            tryConnect()
+          }
+        },
+      })
+    }
+  })
+}
+
+const navigateToDetect = () => {
+  uni.navigateTo({
+    url: `/pages-detect/detect/index?mode=${mode.value}`,
+  })
 }
 </script>
 
@@ -150,6 +166,11 @@ const startDetect = () => {
 
 .start-btn:active {
   background-color: #8e44ad;
+}
+
+.start-btn--loading {
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 .start-btn-text {
