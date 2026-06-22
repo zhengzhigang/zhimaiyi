@@ -1,7 +1,7 @@
 <template>
   <LandscapePage>
     <view class="detect-page">
-      <image class="bg-image" src="/static/images/detect/detect-bg.jpg" mode="scaleToFill" />
+      <image class="bg-image" src="/static/images/detect/detect-bj.jpg" mode="scaleToFill" />
       
       <view class="top-bar">
         <view class="back-btn" @click="goHome">

@@ -109,6 +109,12 @@ class BluetoothManager {
       uni.openBluetoothAdapter({
         success: () => resolve(true),
         fail: (err) => {
+          console.log('初始化蓝牙失败', err)
+          // 蓝牙适配器已经打开时不视为错误
+          if (err.errMsg?.includes('already opened')) {
+            resolve(true)
+            return
+          }
           console.error('初始化蓝牙失败', err)
           this.onError?.('初始化蓝牙失败，请检查蓝牙权限')
           resolve(false)

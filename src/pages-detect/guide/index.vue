@@ -45,13 +45,13 @@ const goBack = () => {
 }
 
 const startDetect = () => {
-  // if (!bluetoothStore.isConnected) {
-  //   uni.showToast({
-  //     title: '请正确连接检测设备后检测！',
-  //     icon: 'none',
-  //   })
-  //   return
-  // }
+  if (!bluetoothStore.isConnected) {
+    uni.showToast({
+      title: '请正确连接检测设备后检测！',
+      icon: 'none',
+    })
+    return
+  }
   if (!bluetoothStore.isConnected) {
     uni.showModal({
       title: '提示',
