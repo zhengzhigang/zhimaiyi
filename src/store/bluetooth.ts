@@ -9,42 +9,65 @@ import { ref, computed } from 'vue'
 
 export const useBluetoothStore = defineStore('bluetooth', () => {
   // ========== 连接状态 ==========
+  /** 蓝牙设备是否已连接 */
   const isConnected = ref(false)
+  /** 设备名称 */
   const deviceName = ref('')
+  /** 设备 ID */
   const deviceId = ref('')
 
   // ========== 检测状态 ==========
+  /** 当前采集模式（停止/快速/全面） */
   const collectMode = ref<CollectMode>(CollectMode.MODE_STOP)
+  /** 检测类型：quick 快速检测 | full 全面检测 */
   const detectType = ref<DetectType>('quick')
+  /** 是否正在检测中 */
   const isDetecting = ref(false)
+  /** 是否正在采集全面检测波形数据 */
   const isCollectingFullWave = ref(false)
 
   // ========== 数据 ==========
+  /** 心率值 */
   const heartRate = ref(0)
+  /** 血氧值 */
   const spo2 = ref(0)
+  /** 波形显示点数组（用于实时绘制） */
   const wavePoints = ref<number[]>([])
+  /** 滤波后的波形点数组 */
   const filterPoints = ref<number[]>([])
+  /** 全面检测完整波形数据 */
   const fullWaveData = ref<number[]>([])
 
   // ========== 采样统计 ==========
+  /** 瞬时采样率 */
   const instantSampleRate = ref(0)
+  /** 平均采样率 */
   const avgSampleRate = ref(0)
 
   // ========== 进度 ==========
+  /** 采集进度 0-100 */
   const collectProgress = ref(0)
+  /** 剩余时间（秒） */
   const remainingTime = ref(0)
 
   // ========== 调试参数 ==========
+  /** 波形振幅比例 */
   const amplitudeRatio = ref(0.1)
+  /** X 轴步进 */
   const xStep = ref(1)
+  /** Y 轴步进 */
   const yStep = ref(80)
+  /** 一阶滤波系数 */
   const filterAlpha = ref(0.3)
+  /** 垂直基线偏移量 */
   const verticalBaseOffset = ref(32768)
 
   // ========== 计算属性 ==========
+  /** 连接状态文案 */
   const connectionText = computed(() => (isConnected.value ? '设备已连接' : '请连接检测设备'))
 
   // ========== 内部辅助 ==========
+  /** 从 bluetoothManager 同步连接状态到 store */
   function updateConnectionState() {
     const state = bluetoothManager.getConnectionState()
     isConnected.value = state.isConnected
@@ -52,6 +75,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     deviceId.value = state.deviceId
   }
 
+  /** 从 bluetoothManager 同步检测状态到 store */
   function updateDetectState() {
     const state = bluetoothManager.getDetectState()
     isDetecting.value = state.isDetecting
@@ -60,18 +84,21 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
   }
 
   // ========== 蓝牙连接相关 ==========
+  /**
+   * 初始化蓝牙并连接指定设备
+   * @param targetDeviceName - 目标设备名称关键字，不传则连接第一个扫描到的设备
+   * @returns 是否连接成功
+   */
   async function initAndConnect(targetDeviceName?: string): Promise<boolean> {
-    console.log('开始初始化')
     const ok = await bluetoothManager.initBluetooth()
-    console.log('初始化蓝牙', ok)
     if (!ok) return false
 
+    // 扫描蓝牙设备
     const devices = await bluetoothManager.startScan()
-    console.log('devices', targetDeviceName, devices)
+    // 按名称匹配目标设备，未指定则取第一个
     const target = targetDeviceName
       ? devices.find((d) => d.deviceId?.includes(targetDeviceName))
       : devices[0]
-    console.log('target', target)
 
     if (!target) {
       uni.showToast({ title: '未找到设备', icon: 'none' })
@@ -79,13 +106,17 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     }
 
     const connected = await bluetoothManager.connectDevice(target.deviceId, target.name || '')
-    console.log('connected', connected)
     if (connected) {
       updateConnectionState()
     }
     return connected
   }
 
+  /**
+   * 直接连接指定设备（需先初始化蓝牙）
+   * @param deviceId - 设备 ID
+   * @param name - 设备名称
+   */
   async function connectDevice(deviceId: string, name = ''): Promise<boolean> {
     const ok = await bluetoothManager.initBluetooth()
     if (!ok) return false
@@ -96,6 +127,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     return connected
   }
 
+  /** 断开蓝牙连接并重置状态 */
   async function disconnectDevice() {
     await bluetoothManager.disconnect()
     updateConnectionState()
@@ -103,14 +135,22 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
   }
 
   // ========== 检测相关 ==========
+  /** 启动快速检测（2分钟） */
   async function startQuickDetect(): Promise<boolean> {
     return startDetect('quick')
   }
 
+  /** 启动全面检测（3分钟） */
   async function startFullDetect(): Promise<boolean> {
     return startDetect('full')
   }
 
+  /**
+   * 启动检测流程
+   * - 快速检测：2分钟，仅显示实时波形
+   * - 全面检测：3分钟，采集完整数据并自动上传分析
+   * @param type - 检测类型
+   */
   async function startDetect(type: DetectType): Promise<boolean> {
     updateDetectState()
     if (isDetecting.value) {
@@ -118,6 +158,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
       return false
     }
 
+    // 重置检测数据
     detectType.value = type
     isCollectingFullWave.value = type === 'full'
     wavePoints.value = []
@@ -126,10 +167,10 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     collectProgress.value = 0
     remainingTime.value = type === 'full' ? 180 : 120
 
-    // 注册回调
+    // 注册蓝牙数据回调
     bluetoothManager.setCallbacks({
+      /** 实时波形数据回调，限制最大显示点数防止绘制性能下降 */
       onWaveData: (points: number[]) => {
-        // 控制显示点数
         const maxDisplay = 600
         const current = wavePoints.value
         const combined = [...current, ...points]
@@ -139,10 +180,12 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
           wavePoints.value = combined
         }
       },
+      /** 采集进度回调 */
       onProgress: (progress: number, remaining: number) => {
         collectProgress.value = progress
         remainingTime.value = remaining
       },
+      /** 检测完成回调，全面检测自动上传数据 */
       onDetectComplete: (data: number[]) => {
         fullWaveData.value = data
         isDetecting.value = false
@@ -150,14 +193,15 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
         collectMode.value = CollectMode.MODE_STOP
         uni.showToast({ title: '检测完成', icon: 'success' })
 
-        // 全面检测结束后自动上传数据
         if (detectType.value === 'full' && data.length > 0) {
           uploadFullWaveData(data)
         }
       },
+      /** 错误回调 */
       onError: (err: string) => {
         uni.showToast({ title: err, icon: 'none' })
       },
+      /** 连接状态变化回调，断开时自动重置 */
       onConnectionChange: (connected: boolean) => {
         isConnected.value = connected
         if (!connected) {
@@ -171,15 +215,22 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     return ok
   }
 
+  /** 停止采集 */
   async function stopCollect() {
     await bluetoothManager.stopDetect()
     updateDetectState()
   }
 
+  /** 关闭设备电源 */
   async function powerOff() {
     await bluetoothManager.powerOff()
   }
 
+  /**
+   * 上传全面检测波形数据
+   * 处理流程：去直流漂移 → 三次样条插值(200Hz→240Hz) → 映射到0-255 → 上传
+   * @param data - 原始波形数据
+   */
   async function uploadFullWaveData(data: number[]) {
     try {
       uni.showLoading({ title: '正在分析数据...' })
@@ -195,6 +246,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
       // 3. 映射到 0-255
       const mapped = convertTo0_255(resampled)
 
+      // 构建上传请求体
       const userStore = useUserStore()
       const payload: UploadWaveData = {
         uid: String(userStore.userInfo?.id || ''),
@@ -219,11 +271,13 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     }
   }
 
+  /** 重置检测（调用 bluetoothManager.reset 并重置本地状态） */
   function resetDetect() {
     bluetoothManager.reset()
     resetState()
   }
 
+  /** 重置所有本地状态到初始值 */
   function resetState() {
     collectMode.value = CollectMode.MODE_STOP
     isDetecting.value = false

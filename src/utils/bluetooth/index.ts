@@ -1,5 +1,6 @@
 /**
- * 蓝牙管理器
+ * 蓝牙管理器（单例模式）
+ * 负责蓝牙设备连接、数据传输、检测流程控制
  */
 
 import {
@@ -17,53 +18,74 @@ import {
   COLLECT_DURATION_QUICK,
   HEART_BEAT_INTERVAL,
   SERVICE_UUID,
+  CMD_RAW_LIGHT_COLLECT
 } from './constants'
 import type { BLEDeviceInfo, DetectType } from './types'
 import { CollectMode } from './types'
 
-// 回调类型
+/** 实时波形数据回调 */
 type OnWaveDataCallback = (points: number[]) => void
+/** 采集进度回调，progress: 0-100, remaining: 剩余秒数 */
 type OnProgressCallback = (progress: number, remaining: number) => void
+/** 检测完成回调，data: 完整波形数据 */
 type OnDetectCompleteCallback = (data: number[]) => void
+/** 错误回调 */
 type OnErrorCallback = (err: string) => void
+/** 连接状态变化回调 */
 type OnConnectionChangeCallback = (connected: boolean) => void
 
 class BluetoothManager {
+  /** 单例实例 */
   private static instance: BluetoothManager
 
-  // 设备信息
+  // ========== 设备信息 ==========
+  /** 当前连接的设备 ID */
   private deviceId = ''
+  /** 当前连接的设备名称 */
   private deviceName = ''
+  /** 蓝牙是否已连接 */
   private isConnected = false
 
-  // 特征值
+  // ========== 特征值 ==========
+  /** 写特征值 ID */
   private writeCharId = ''
+  /** 读特征值 ID */
   private readCharId = ''
 
-  // 检测状态
+  // ========== 检测状态 ==========
+  /** 当前采集模式 */
   private collectMode = CollectMode.MODE_STOP
+  /** 检测类型 */
   private detectType: DetectType = 'quick'
+  /** 是否正在检测中 */
   private isDetecting = false
+  /** 完整波形数据缓存（全面检测用） */
   private fullWaveData: number[] = []
 
-  // 定时器
+  // ========== 定时器 ==========
+  /** 心跳保活定时器 */
   private heartBeatTimer: ReturnType<typeof setInterval> | null = null
+  /** 检测超时定时器 */
   private detectTimer: ReturnType<typeof setTimeout> | null = null
+  /** 进度更新定时器 */
   private progressTimer: ReturnType<typeof setInterval> | null = null
 
-  // 回调
+  // ========== 回调函数 ==========
   private onWaveData: OnWaveDataCallback | null = null
   private onProgress: OnProgressCallback | null = null
   private onDetectComplete: OnDetectCompleteCallback | null = null
   private onError: OnErrorCallback | null = null
   private onConnectionChange: OnConnectionChangeCallback | null = null
 
-  // 采样统计
+  // ========== 采样统计 ==========
+  /** 累计采样点数 */
   private sampleCount = 0
+  /** 上次采样时间戳 */
   private lastSampleTime = 0
 
   private constructor() {}
 
+  /** 获取单例实例 */
   public static getInstance(): BluetoothManager {
     if (!BluetoothManager.instance) {
       BluetoothManager.instance = new BluetoothManager()
@@ -72,6 +94,7 @@ class BluetoothManager {
   }
 
   // ========== 状态获取 ==========
+  /** 获取当前连接状态 */
   public getConnectionState() {
     return {
       isConnected: this.isConnected,
@@ -80,6 +103,7 @@ class BluetoothManager {
     }
   }
 
+  /** 获取当前检测状态 */
   public getDetectState() {
     return {
       isDetecting: this.isDetecting,
@@ -89,6 +113,7 @@ class BluetoothManager {
   }
 
   // ========== 回调注册 ==========
+  /** 注册蓝牙事件回调 */
   public setCallbacks(options: {
     onWaveData?: OnWaveDataCallback
     onProgress?: OnProgressCallback
@@ -104,12 +129,15 @@ class BluetoothManager {
   }
 
   // ========== 蓝牙初始化与连接 ==========
+  /**
+   * 初始化蓝牙适配器
+   * 已打开时不视为错误，直接返回 true
+   */
   public async initBluetooth(): Promise<boolean> {
     return new Promise((resolve) => {
       uni.openBluetoothAdapter({
         success: () => resolve(true),
         fail: (err) => {
-          console.log('初始化蓝牙失败', err)
           // 蓝牙适配器已经打开时不视为错误
           if (err.errMsg?.includes('already opened')) {
             resolve(true)
@@ -123,14 +151,20 @@ class BluetoothManager {
     })
   }
 
+  /**
+   * 扫描蓝牙设备（5秒超时）
+   * @returns 扫描到的设备列表
+   */
   public async startScan(): Promise<BLEDeviceInfo[]> {
     return new Promise((resolve) => {
       const devices: BLEDeviceInfo[] = []
+      // 5秒超时后停止扫描
       const timeout = setTimeout(() => {
         uni.stopBluetoothDevicesDiscovery()
         resolve(devices)
       }, 5000)
 
+      // 监听设备发现，按 deviceId 去重
       uni.onBluetoothDeviceFound((res) => {
         res.devices.forEach((d) => {
           if (d.name && !devices.find((x) => x.deviceId === d.deviceId)) {
@@ -155,12 +189,16 @@ class BluetoothManager {
     })
   }
 
+  /**
+   * 连接蓝牙设备
+   * 连接成功后延迟 1s 再发现服务（等待设备稳定）
+   */
   public async connectDevice(deviceId: string, deviceName = ''): Promise<boolean> {
     return new Promise((resolve) => {
       uni.createBLEConnection({
         deviceId,
         success: () => {
-          console.log('连接设备成功', deviceId)
+          // 延迟 1s 等待设备稳定后再发现服务
           setTimeout(() => {
             this.discoverServices(deviceId, deviceName).then(resolve)
           }, 1000)
@@ -174,12 +212,13 @@ class BluetoothManager {
     })
   }
 
+  /** 发现设备服务，匹配目标 SERVICE_UUID */
   private async discoverServices(deviceId: string, deviceName: string): Promise<boolean> {
     return new Promise((resolve) => {
       uni.getBLEDeviceServices({
         deviceId,
         success: (res) => {
-          console.log('获取服务成功', res)
+          // 查找匹配的服务 UUID
           const service = res.services.find(
             (s) => s.uuid.toUpperCase() === SERVICE_UUID.toUpperCase(),
           )
@@ -199,6 +238,10 @@ class BluetoothManager {
     })
   }
 
+  /**
+   * 发现服务特征值，匹配读写 UUID
+   * 成功后开启 notify 并启动心跳
+   */
   private async discoverCharacteristics(
     deviceId: string,
     serviceId: string,
@@ -209,9 +252,11 @@ class BluetoothManager {
         deviceId,
         serviceId,
         success: (res) => {
+          // 查找写特征值
           const writeChar = res.characteristics.find(
             (c) => c.uuid.toUpperCase() === CHAR_WRITE_UUID.toUpperCase(),
           )
+          // 查找读特征值
           const readChar = res.characteristics.find(
             (c) => c.uuid.toUpperCase() === CHAR_READ_UUID.toUpperCase(),
           )
@@ -227,6 +272,7 @@ class BluetoothManager {
           this.deviceId = deviceId
           this.deviceName = deviceName
 
+          // 开启 notify 接收数据
           this.enableNotify(deviceId, serviceId, readChar.uuid).then((ok) => {
             if (ok) {
               this.isConnected = true
@@ -245,6 +291,10 @@ class BluetoothManager {
     })
   }
 
+  /**
+   * 开启 BLE 通知，接收设备数据
+   * 数据通过 onBLECharacteristicValueChange 回调
+   */
   private async enableNotify(
     deviceId: string,
     serviceId: string,
@@ -257,6 +307,7 @@ class BluetoothManager {
         characteristicId,
         state: true,
         success: () => {
+          // 监听特征值变化，接收设备数据
           uni.onBLECharacteristicValueChange((res) => {
             this.handleBLEData(res.value)
           })
@@ -271,10 +322,15 @@ class BluetoothManager {
     })
   }
 
+  /**
+   * 处理蓝牙接收到的数据
+   * 解析帧 → 提取 ADC 值 → 累积到 fullWaveData → 触发 onWaveData 回调
+   */
   private handleBLEData(value: ArrayBuffer) {
     const frame = parseFrame(value)
     if (!frame) return
 
+    // 仅处理原始光电容积波采集数据
     if (frame.cmd === CMD_RAW_LIGHT_COLLECT) {
       const adcValues = extractADCValues(frame.data)
       if (adcValues.length > 0) {
@@ -286,6 +342,7 @@ class BluetoothManager {
   }
 
   // ========== 心跳保活 ==========
+  /** 启动心跳保活，定时发送心跳帧防止设备断连 */
   private startHeartBeat() {
     this.stopHeartBeat()
     this.heartBeatTimer = setInterval(() => {
@@ -295,6 +352,7 @@ class BluetoothManager {
     }, HEART_BEAT_INTERVAL)
   }
 
+  /** 停止心跳保活 */
   private stopHeartBeat() {
     if (this.heartBeatTimer) {
       clearInterval(this.heartBeatTimer)
@@ -303,6 +361,10 @@ class BluetoothManager {
   }
 
   // ========== 写入数据 ==========
+  /**
+   * 向设备写入 BLE 数据
+   * @param buffer - 要写入的二进制数据
+   */
   private async writeData(buffer: ArrayBuffer): Promise<boolean> {
     return new Promise((resolve) => {
       if (!this.isConnected || !this.deviceId || !this.writeCharId) {
@@ -324,6 +386,13 @@ class BluetoothManager {
   }
 
   // ========== 检测控制 ==========
+  /**
+   * 启动检测流程
+   * - 发送采集指令给设备
+   * - 启动进度更新定时器（200ms 间隔）
+   * - 设置超时自动停止
+   * @param type - 检测类型（quick: 2分钟 / full: 3分钟）
+   */
   public async startDetect(type: DetectType): Promise<boolean> {
     if (!this.isConnected) {
       this.onError?.('设备未连接')
@@ -334,6 +403,7 @@ class BluetoothManager {
       return false
     }
 
+    // 重置检测状态
     this.detectType = type
     this.isDetecting = true
     this.collectMode = CollectMode.MODE_RAW_LIGHT
@@ -341,28 +411,31 @@ class BluetoothManager {
     this.sampleCount = 0
     this.lastSampleTime = Date.now()
 
+    // 发送采集指令
     const ok = await this.writeData(buildRawLightCollectFrame())
     if (!ok) {
       this.isDetecting = false
       return false
     }
 
+    // 根据检测类型确定时长
     const duration = type === 'quick' ? COLLECT_DURATION_QUICK : COLLECT_DURATION_FULL
     const startTime = Date.now()
 
-    // 进度更新
+    // 启动进度更新定时器（200ms 间隔，5次/秒）
     this.progressTimer = setInterval(() => {
       const elapsed = Date.now() - startTime
       const progress = Math.min(100, Math.round((elapsed / duration) * 100))
       const remaining = Math.max(0, Math.ceil((duration - elapsed) / 1000))
       this.onProgress?.(progress, remaining)
 
+      // 达到时长后自动停止
       if (elapsed >= duration) {
         this.stopDetect()
       }
     }, 200)
 
-    // 超时自动停止
+    // 超时保护（比目标时长多 1 秒）
     this.detectTimer = setTimeout(() => {
       this.stopDetect()
     }, duration + 1000)
@@ -370,7 +443,12 @@ class BluetoothManager {
     return true
   }
 
+  /**
+   * 停止检测
+   * 发送停止帧 → 清除定时器 → 触发完成回调
+   */
   public async stopDetect(): Promise<void> {
+    // 清除定时器
     if (this.progressTimer) {
       clearInterval(this.progressTimer)
       this.progressTimer = null
@@ -381,22 +459,27 @@ class BluetoothManager {
     }
 
     if (this.isDetecting) {
+      // 发送停止采集指令
       await this.writeData(buildStopFrame())
       this.isDetecting = false
       this.collectMode = CollectMode.MODE_STOP
+      // 触发完成回调，传递完整波形数据副本
       this.onDetectComplete?.([...this.fullWaveData])
     }
   }
 
+  /** 关闭设备电源 */
   public async powerOff(): Promise<boolean> {
     return this.writeData(buildPowerOffFrame())
   }
 
   // ========== 断开连接 ==========
+  /** 断开蓝牙连接：停止检测 → 停止心跳 → 关闭连接 → 关闭适配器 */
   public async disconnect(): Promise<void> {
     await this.stopDetect()
     this.stopHeartBeat()
 
+    // 关闭 BLE 连接
     if (this.deviceId) {
       try {
         uni.closeBLEConnection({ deviceId: this.deviceId })
@@ -404,6 +487,7 @@ class BluetoothManager {
         // ignore
       }
     }
+    // 关闭蓝牙适配器
     uni.closeBluetoothAdapter()
 
     this.isConnected = false
@@ -413,6 +497,7 @@ class BluetoothManager {
   }
 
   // ========== 重置状态 ==========
+  /** 重置检测状态（不清除连接） */
   public reset() {
     this.stopDetect()
     this.fullWaveData = []
@@ -420,4 +505,5 @@ class BluetoothManager {
   }
 }
 
+/** 蓝牙管理器单例导出 */
 export const bluetoothManager = BluetoothManager.getInstance()

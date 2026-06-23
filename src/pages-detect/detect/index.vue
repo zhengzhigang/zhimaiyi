@@ -19,12 +19,8 @@
         :style="canvasStyle"
       ></canvas>
       
-      <view class="progress-ring">
-        <view class="ring-bg"></view>
-        <view class="ring-progress" :style="{ background: ringGradient }"></view>
-        <view class="ring-inner">
-          <text class="progress-text">{{ progress }}%</text>
-        </view>
+      <view class="progress-center">
+        <sar-progress-circle :percent="progress" :thickness="10" size="80" color="#00D4A4" />
       </view>
     </view>
   </LandscapePage>
@@ -46,11 +42,6 @@ const canvasHeight = ref(300)
 const isConnected = computed(() => bluetoothStore.isConnected)
 const progress = computed(() => bluetoothStore.collectProgress)
 const isDetecting = computed(() => bluetoothStore.isDetecting)
-
-const ringGradient = computed(() => {
-  const deg = (progress.value / 100) * 360
-  return `conic-gradient(#5bc0de 0deg, #5bc0de ${deg}deg, transparent ${deg}deg, transparent 360deg)`
-})
 
 const canvasStyle = computed(() => ({
   position: 'absolute',
@@ -302,51 +293,14 @@ function drawWaveform() {
   z-index: 10;
 }
 
-.progress-ring {
-  width: 120rpx;
-  height: 120rpx;
+.progress-center {
   position: absolute;
-  top: 50%;
+  top: 170rpx;
   left: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 20;
-}
-
-.ring-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-  border: 6rpx solid rgba(255, 255, 255, 0.3);
-}
-
-.ring-progress {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border-radius: 50%;
-}
-
-.ring-inner {
-  position: absolute;
-  top: 10rpx;
-  left: 10rpx;
-  right: 10rpx;
-  bottom: 10rpx;
-  border-radius: 50%;
-  background-color: rgba(26, 188, 156, 0.95);
+  transform: translateX(-50%);
+  z-index: 21;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.progress-text {
-  font-size: 28rpx;
-  font-weight: bold;
-  color: #ffffff;
 }
 </style>
