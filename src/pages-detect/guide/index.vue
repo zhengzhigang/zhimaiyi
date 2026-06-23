@@ -65,7 +65,10 @@ const startDetect = () => {
 
 const tryConnect = () => {
   loading.value = true
-  bluetoothStore.initAndConnect('1C:91:9D:A0:2B:8B').then(() => {
+  // 真机上需要使用设备名称匹配，不能用 MAC 地址
+  // 可选：传入设备名称关键字如 'Redmi'、'AirDots'、'PULSE' 等
+  // 传空则连接扫描到的第一个设备
+  bluetoothStore.initAndConnect('Redmi').then(() => {
     loading.value = false
     if (bluetoothStore.isConnected) {
       navigateToDetect()

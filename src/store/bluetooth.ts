@@ -95,10 +95,12 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
 
     // 扫描蓝牙设备
     const devices = await bluetoothManager.startScan()
+    console.log('扫描到的设备:', devices.map((item, index) => `${index}**${item.name || ''}**${item.deviceId}`))
     // 按名称匹配目标设备，未指定则取第一个
     const target = targetDeviceName
       ? devices.find((d) => d.deviceId?.includes(targetDeviceName))
       : devices[0]
+    console.log('目标设备:', targetDeviceName, target)
 
     if (!target) {
       uni.showToast({ title: '未找到设备', icon: 'none' })
@@ -106,6 +108,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     }
 
     const connected = await bluetoothManager.connectDevice(target.deviceId, target.name || '')
+    console.log('连接设备:', target.deviceId, target.name || '', connected)
     if (connected) {
       updateConnectionState()
     }

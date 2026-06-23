@@ -158,29 +158,53 @@ class BluetoothManager {
   public async startScan(): Promise<BLEDeviceInfo[]> {
     return new Promise((resolve) => {
       const devices: BLEDeviceInfo[] = []
+      const deviceIdSet = new Set<string>()
+
       // 5秒超时后停止扫描
       const timeout = setTimeout(() => {
         uni.stopBluetoothDevicesDiscovery()
+        // 清理事件监听
+        if (typeof uni.offBluetoothDeviceFound === 'function') {
+          uni.offBluetoothDeviceFound()
+        }
         resolve(devices)
       }, 5000)
 
       // 监听设备发现，按 deviceId 去重
-      uni.onBluetoothDeviceFound((res) => {
+      const onDeviceFound = (res: any) => {
         res.devices.forEach((d) => {
-          if (d.name && !devices.find((x) => x.deviceId === d.deviceId)) {
+          // 过滤掉没有名称的设备
+          if (d.name && !deviceIdSet.has(d.deviceId)) {
+            deviceIdSet.add(d.deviceId)
             devices.push({
               deviceId: d.deviceId,
               name: d.name,
               RSSI: d.RSSI,
             })
+            console.log('发现设备:', d.name, d.deviceId)
           }
         })
-      })
+      }
 
+      // 先清理可能存在的旧监听器
+      if (typeof uni.offBluetoothDeviceFound === 'function') {
+        uni.offBluetoothDeviceFound()
+      }
+      uni.onBluetoothDeviceFound(onDeviceFound)
+
+      // 扫描参数：不指定 services 表示全设备扫描
+      // 如果需要特定服务，可以添加如: services: ['0000FFE0-0000-1000-8000-00805F9B34FB']
       uni.startBluetoothDevicesDiscovery({
-        success: () => {},
+        allowDuplicatesKey: false,
+        // 不指定 services，进行全设备扫描
+        success: () => {
+          console.log('开始扫描蓝牙设备')
+        },
         fail: (err) => {
           clearTimeout(timeout)
+          if (typeof uni.offBluetoothDeviceFound === 'function') {
+            uni.offBluetoothDeviceFound()
+          }
           console.error('搜索设备失败', err)
           this.onError?.('搜索设备失败')
           resolve([])
