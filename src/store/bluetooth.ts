@@ -102,6 +102,11 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
       : devices[0]
     console.log('目标设备:', targetDeviceName, target)
 
+    if (devices.length === 0) {
+      uni.showToast({ title: '未扫描到设备', icon: 'none' })
+      return false
+    }
+
     if (!target) {
       uni.showToast({ title: '未找到设备', icon: 'none' })
       return false
