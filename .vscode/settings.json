@@ -98,5 +98,6 @@
     "Wechat",
     "WechatMiniprogram",
     "Weixin"
-  ]
+  ],
+  "nuxt.isNuxtApp": false
 }
