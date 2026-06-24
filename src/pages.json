@@ -242,7 +242,13 @@
         // #ifdef MP-WEIXIN
         {
           "path": "select-mode/index",
-          "type": "page"
+          "type": "page",
+          "style": {
+            "navigationBarTitleText": "横屏页面",
+            "mp-weixin": {
+              "pageOrientation": "landscape" // 强制横屏
+            }
+          }
         },
         // #endif
         // #ifdef H5
@@ -258,7 +264,13 @@
         // #ifdef MP-WEIXIN
         {
           "path": "guide/index",
-          "type": "page"
+          "type": "page",
+          "style": {
+            "navigationBarTitleText": "横屏页面",
+            "mp-weixin": {
+              "pageOrientation": "landscape" // 强制横屏
+            }
+          }
         },
         // #endif
         // #ifdef H5
@@ -274,7 +286,13 @@
         // #ifdef MP-WEIXIN
         {
           "path": "detect/index",
-          "type": "page"
+          "type": "page",
+          "style": {
+            "navigationBarTitleText": "横屏页面",
+            "mp-weixin": {
+              "pageOrientation": "landscape" // 强制横屏
+            }
+          }
         }
         // #endif
       ]

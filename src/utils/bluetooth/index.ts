@@ -222,13 +222,15 @@ class BluetoothManager {
       uni.createBLEConnection({
         deviceId,
         success: () => {
+          console.log('连接设备成功', deviceId, deviceName)
           // 延迟 1s 等待设备稳定后再发现服务
           setTimeout(() => {
             this.discoverServices(deviceId, deviceName).then(resolve)
           }, 1000)
         },
         fail: (err) => {
-          console.error('连接设备失败', err)
+          console.log('连接设备失败', deviceId, deviceName, err)
+          console.error('连接设备失败', err, err)
           this.onError?.('连接设备失败')
           resolve(false)
         },
@@ -242,6 +244,7 @@ class BluetoothManager {
       uni.getBLEDeviceServices({
         deviceId,
         success: (res) => {
+          console.log('发现服务成功', SERVICE_UUID, res.services)
           // 查找匹配的服务 UUID
           const service = res.services.find(
             (s) => s.uuid.toUpperCase() === SERVICE_UUID.toUpperCase(),
