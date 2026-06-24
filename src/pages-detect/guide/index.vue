@@ -1,11 +1,6 @@
 <template>
-  <LandscapePage>
+  <view>
     <view class="guide-page">
-      <view class="back-btn" @click="goBack">
-        <text class="back-icon">←</text>
-        <text class="back-text">返回</text>
-      </view>
-
       <view class="image-container">
         <image class="step-image" src="/static/images/detect/step1.png" mode="aspectFit" />
         <image class="step-image" src="/static/images/detect/step2.png" mode="aspectFit" />
@@ -22,7 +17,7 @@
         <text class="start-btn-text">{{ loading ? '连接中...' : '开始检测' }}</text>
       </view>
     </view>
-  </LandscapePage>
+  </view>
 </template>
 
 <script lang="ts" setup name="Guide">
@@ -96,40 +91,19 @@ const navigateToDetect = () => {
 <style scoped>
 .guide-page {
   width: 100%;
-  height: 100%;
+  height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 24rpx 32rpx;
+  padding: 15rpx;
   background-color: #148a86;
   box-sizing: border-box;
-}
-
-.back-btn {
-  display: flex;
-  align-items: center;
-  gap: 8rpx;
-  margin-bottom: 16rpx;
-  padding: 12rpx 20rpx;
-  background-color: rgba(255, 255, 255, 0.15);
-  border-radius: 12rpx;
-  align-self: flex-start;
-}
-
-.back-icon {
-  font-size: 32rpx;
-  color: #ffffff;
-}
-
-.back-text {
-  font-size: 28rpx;
-  color: #ffffff;
 }
 
 .image-container {
   flex: 1;
   display: flex;
   flex-direction: row;
-  gap: 16rpx;
+  gap: 0;
   margin: 16rpx 0;
   justify-content: center;
   align-items: center;
@@ -137,8 +111,7 @@ const navigateToDetect = () => {
 
 .step-image {
   width: 22%;
-  height: 80%;
-  border-radius: 12rpx;
+  height: 100rpx;
   background-color: #ffffff;
 }
 
@@ -146,25 +119,25 @@ const navigateToDetect = () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin: 20rpx 0;
+  margin: 20rpx 0 15px 0;
 }
 
 .tip-text {
-  font-size: 28rpx;
+  font-size: 18rpx;
   color: #ffffff;
   line-height: 1.6;
 }
 
 .start-btn {
   align-self: center;
-  width: 320rpx;
-  height: 100rpx;
+  width: 220rpx;
+  height: 50rpx;
+  margin-bottom: 10prx;
   background-color: #9b59b6;
-  border-radius: 50rpx;
+  border-radius: 25rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin-bottom: 40rpx;
 }
 
 .start-btn:active {
@@ -177,7 +150,7 @@ const navigateToDetect = () => {
 }
 
 .start-btn-text {
-  font-size: 36rpx;
+  font-size: 20rpx;
   font-weight: bold;
   color: #ffffff;
 }

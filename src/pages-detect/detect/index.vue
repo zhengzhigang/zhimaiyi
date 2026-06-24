@@ -1,5 +1,5 @@
 <template>
-  <LandscapePage>
+  <!-- <LandscapePage> -->
     <view class="detect-page">
       <image class="bg-image" src="/static/images/detect/detect-bj.jpg" mode="scaleToFill" />
       
@@ -20,10 +20,10 @@
       ></canvas>
       
       <view class="progress-center">
-        <sar-progress-circle :percent="progress" :thickness="10" size="80" color="#00D4A4" />
+        <sar-progress-circle :percent="progress" :thickness="10" size="70rpx" color="#00D4A4" />
       </view>
     </view>
-  </LandscapePage>
+  <!-- </LandscapePage> -->
 </template>
 
 <script lang="ts" setup name="Detect">
@@ -264,7 +264,7 @@ function drawWaveform() {
 
 .detect-page {
   width: 100%;
-  height: 100%;
+  height: 100vh;
   position: relative;
 }
 
@@ -284,7 +284,7 @@ function drawWaveform() {
 }
 
 .btn-text {
-  font-size: 28rpx;
+  font-size: 18rpx;
   color: rgba(255, 255, 255, 0.85);
   letter-spacing: 4rpx;
 }
@@ -295,7 +295,7 @@ function drawWaveform() {
 
 .progress-center {
   position: absolute;
-  top: 170rpx;
+  top: 30rpx;
   left: 50%;
   transform: translateX(-50%);
   z-index: 21;

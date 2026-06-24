@@ -33,7 +33,7 @@ const goToGuide = (mode: 'quick' | 'full') => {
 <style scoped>
 .select-mode-page {
   width: 100%;
-  height: 100%;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -42,11 +42,11 @@ const goToGuide = (mode: 'quick' | 'full') => {
 }
 
 .header {
-  margin-bottom: 60rpx;
+  margin-bottom: 80rpx;
 }
 
 .title {
-  font-size: 48rpx;
+  font-size: 32rpx;
   font-weight: bold;
   color: #ffffff;
 }
@@ -55,13 +55,13 @@ const goToGuide = (mode: 'quick' | 'full') => {
   display: flex;
   justify-content: space-between;
   gap: 80rpx;
-  margin-bottom: 80rpx;
+  margin-bottom: 50rpx;
 }
 
 .detect-btn {
-  width: 400rpx;
-  height: 160rpx;
-  border-radius: 24rpx;
+  width: 180rpx;
+  height: 60rpx;
+  border-radius: 30rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -82,7 +82,7 @@ const goToGuide = (mode: 'quick' | 'full') => {
 }
 
 .btn-text {
-  font-size: 40rpx;
+  font-size: 26rpx;
   font-weight: bold;
   color: #ffffff;
 }
