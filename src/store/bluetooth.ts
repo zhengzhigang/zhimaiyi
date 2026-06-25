@@ -179,6 +179,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     bluetoothManager.setCallbacks({
       /** 实时波形数据回调，限制最大显示点数防止绘制性能下降 */
       onWaveData: (points: number[]) => {
+        console.log('===onWaveData===', points)
         const maxDisplay = 600
         const current = wavePoints.value
         const combined = [...current, ...points]

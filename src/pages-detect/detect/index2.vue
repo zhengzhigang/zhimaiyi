@@ -1,71 +1,73 @@
 <template>
-  <!-- <LandscapePage> -->
-    <view class="detect-page">
-      <image class="bg-image" src="/static/images/detect/detect-bj.jpg" mode="scaleToFill" />
-      
-      <view class="top-bar">
-        <view class="back-btn" @click="goHome">
-          <text class="btn-text">返回首页</text>
-        </view>
-        <view class="retry-btn" @click="retryDetect">
-          <text class="btn-text">重新检测</text>
-        </view>
+  <view class="detect-page">
+    <image class="bg-image" src="/static/images/detect/detect-bj.jpg" mode="scaleToFill" />
+    
+    <view class="top-bar">
+      <view class="back-btn" @click="goHome">
+        <text class="btn-text">返回首页</text>
       </view>
-      
-      <canvas 
-        canvas-id="waveformCanvas" 
-        id="waveformCanvas"
-        class="waveform-canvas"
-        :style="canvasStyle"
-      ></canvas>
-      
-      <view class="progress-center">
-        <sar-progress-circle :percent="progress" :thickness="10" size="70rpx" color="#00D4A4" />
+      <view class="retry-btn" @click="retryDetect">
+        <text class="btn-text">重新检测</text>
       </view>
     </view>
-  <!-- </LandscapePage> -->
+    
+    <view class="chart-container">
+      <ec-canvas 
+        canvas-id="waveformCanvas" 
+        id="waveformCanvas"
+        :ec="ec"
+        class="waveform-chart"
+      ></ec-canvas>
+    </view>
+    
+    <view class="progress-center">
+      <sar-progress-circle :percent="progress" :thickness="10" size="70rpx" color="#00D4A4" />
+    </view>
+  </view>
 </template>
 
 <script lang="ts" setup name="Detect">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import LandscapePage from '@/components/layout/LandscapePage.vue'
 import { useBluetoothStore } from '@/store/bluetooth'
 import { removeDCAndDrift, firstOrderFilter, isWaveValueValid } from '@/utils/bluetooth/algorithms'
+import * as echarts from '@/wxcomponents/ec-canvas/echarts'
+import { 
+  DEFAULT_FILTER_ALPHA, 
+  DEFAULT_VERTICAL_BASE_OFFSET 
+} from '@/utils/bluetooth/constants'
 
 const bluetoothStore = useBluetoothStore()
 
 const mode = ref<'quick' | 'full'>('quick')
-const canvasWidth = ref(600)
-const canvasHeight = ref(300)
-
 const isConnected = computed(() => bluetoothStore.isConnected)
 const progress = computed(() => bluetoothStore.collectProgress)
 const isDetecting = computed(() => bluetoothStore.isDetecting)
 
-const canvasStyle = computed(() => ({
-  position: 'absolute',
-  top: '80px',
-  left: '70rpx',
-  right: '70rpx',
-  width: 'auto',
-  height: `${canvasHeight.value}px`,
-}))
+const cycleDuration = 5
+const drawInterval = 50
+const totalDraws = cycleDuration * 1000 / drawInterval
+const pointsPerDraw = 3
+const totalPoints = Math.floor(totalDraws * pointsPerDraw)
 
 let drawTimer: ReturnType<typeof setInterval> | null = null
 let baselineQueue: number[] = []
-let smoothBaseline = { value: 32768 }
-let lastFilterVal = 55
+let smoothBaseline = { value: DEFAULT_VERTICAL_BASE_OFFSET }
+let lastFilterVal = 0
 let continueErrorCount = 0
 let currentPoints: number[] = []
-let currentX = 0
 
-// 周期配置
-const cycleDuration = 5 // 5秒一个周期
-const drawInterval = 50 // 50ms 绘制一次
-const totalDraws = cycleDuration * 1000 / drawInterval // 5秒内绘制次数 = 100
-const pointsPerDraw = 3 // 每次绘制新增的数据点数
-const totalPoints = Math.floor(totalDraws * pointsPerDraw) // 5秒内总数据点数 = 300
+let chart: any = null
+
+const ec = ref({
+  lazyLoad: true,
+  onInit: (canvas: any, width: number, height: number) => {
+    chart = echarts.init(canvas, undefined, { width, height })
+    chart.setOption(getChartOption())
+    startDrawLoop()
+    return chart
+  }
+})
 
 onLoad((options) => {
   if (options?.mode) {
@@ -74,16 +76,7 @@ onLoad((options) => {
 })
 
 onMounted(() => {
-  const sysInfo = uni.getSystemInfoSync()
-  // 横屏时 windowWidth/windowHeight 不会自动交换，取大值为宽、小值为高
-  const screenW = Math.max(sysInfo.windowWidth, sysInfo.windowHeight)
-  const screenH = Math.min(sysInfo.windowWidth, sysInfo.windowHeight)
-  // canvas 左右距边30px，顶部距80px，底部距30px
-  canvasWidth.value = screenW - 60
-  canvasHeight.value = screenH - 110
-  
   startDetect()
-  startDrawLoop()
 })
 
 onUnmounted(() => {
@@ -113,11 +106,10 @@ async function startDetect() {
 
 async function doStartDetect() {
   baselineQueue = []
-  smoothBaseline.value = 32768
+  smoothBaseline.value = DEFAULT_VERTICAL_BASE_OFFSET
   lastFilterVal = 0
   continueErrorCount = 0
   currentPoints = []
-  currentX = 0
   console.log('startDetect', mode.value)
   await bluetoothStore.startDetect(mode.value)
 }
@@ -125,7 +117,11 @@ async function doStartDetect() {
 function retryDetect() {
   bluetoothStore.resetDetect()
   currentPoints = []
-  currentX = 0
+  if (chart) {
+    chart.setOption({
+      series: [{ data: [] }]
+    })
+  }
   startDetect()
 }
 
@@ -134,11 +130,75 @@ function goHome() {
   uni.reLaunch({ url: '/pages/index/index' })
 }
 
+function getChartOption() {
+  return {
+    // backgroundColor: '#0a1628',
+    grid: {
+      left: 60,
+      right: 10,
+      top: 20,
+      bottom: 50
+    },
+    xAxis: {
+      type: 'value',
+      show: false,
+      min: 0,
+      max: totalPoints
+    },
+    yAxis: {
+      type: 'value',
+      min: 0,
+      max: 100,
+      interval: 20,
+      axisLine: { show: false },
+      axisTick: { show: false },
+      axisLabel: {
+        color: 'rgba(255, 255, 255, 0.7)',
+        fontSize: 12
+      },
+      splitLine: {
+        lineStyle: {
+          color: 'rgba(100, 150, 200, 0.15)'
+        }
+      }
+    },
+    series: [{
+      type: 'line',
+      data: [],
+      smooth: true,
+      symbol: 'none',
+      lineStyle: {
+        width: 2,
+        color: {
+          type: 'linear',
+          x: 0, y: 0, x2: 1, y2: 0,
+          colorStops: [
+            { offset: 0, color: 'rgba(0, 200, 255, 0.6)' },
+            { offset: 0.5, color: 'rgba(0, 200, 255, 0.9)' },
+            { offset: 1, color: 'rgba(0, 255, 200, 1)' }
+          ]
+        }
+      },
+      areaStyle: {
+        color: {
+          type: 'linear',
+          x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [
+            { offset: 0, color: 'rgba(0, 200, 255, 0.2)' },
+            { offset: 1, color: 'rgba(0, 200, 255, 0.05)' }
+          ]
+        }
+      }
+    }]
+  }
+}
+
 function startDrawLoop() {
   stopDrawLoop()
+  
   drawTimer = setInterval(() => {
     processNewData()
-    drawWaveform()
+    updateChart()
   }, drawInterval)
 }
 
@@ -170,152 +230,24 @@ function processNewData() {
     }
 
     v = removeDCAndDrift(v, baselineQueue, smoothBaseline)
-    lastFilterVal = firstOrderFilter(v, lastFilterVal, 0.3)
+    lastFilterVal = firstOrderFilter(v, lastFilterVal, DEFAULT_FILTER_ALPHA)
     
     if (currentPoints.length >= totalPoints) {
       currentPoints = []
-      currentX = 0
-      lastFilterVal = 55
+      lastFilterVal = 0
     }
     currentPoints.push(lastFilterVal)
   }
 }
 
-function drawWaveform() {
-  const ctx = uni.createCanvasContext('waveformCanvas')
-  const w = canvasWidth.value
-  const h = canvasHeight.value
+function updateChart() {
+  if (!chart || currentPoints.length === 0) return
   
-  const paddingTop = 20
-  const paddingBottom = 50
-  const waveAreaHeight = h - paddingTop - paddingBottom
-  const waveAreaY = paddingTop
-  const waveAreaWidth = w - 60
-  const waveAreaX = 60
-  
-  // 绘制背景（深蓝色）
-  ctx.setFillStyle('#0a1628')
-  ctx.fillRect(0, 0, w, h)
-  
-  // 绘制网格线
-  ctx.setStrokeStyle('rgba(100, 150, 200, 0.15)')
-  ctx.setLineWidth(1)
-  
-  const gridRows = 6
-  const gridCols = 10
-  const rowHeight = waveAreaHeight / (gridRows - 1)
-  const colWidth = waveAreaWidth / gridCols
-  
-  for (let i = 0; i < gridRows; i++) {
-    const y = waveAreaY + i * rowHeight
-    ctx.beginPath()
-    ctx.moveTo(waveAreaX, y)
-    ctx.lineTo(w, y)
-    ctx.stroke()
-  }
-  
-  for (let i = 0; i <= gridCols; i++) {
-    const x = waveAreaX + i * colWidth
-    ctx.beginPath()
-    ctx.moveTo(x, waveAreaY)
-    ctx.lineTo(x, waveAreaY + waveAreaHeight)
-    ctx.stroke()
-  }
-  
-  // 中央参考线
-  ctx.setStrokeStyle('rgba(100, 150, 200, 0.4)')
-  const centerY = waveAreaY + waveAreaHeight / 2
-  ctx.beginPath()
-  ctx.moveTo(waveAreaX, centerY)
-  ctx.lineTo(w, centerY)
-  ctx.stroke()
-  
-  // 绘制 Y 轴刻度标签
-  ctx.setFillStyle('rgba(255, 255, 255, 0.7)')
-  ctx.setFontSize(12)
-  ctx.setTextAlign('right')
-  ctx.setTextBaseline('middle')
-  
-  const yLabels = ['100', '80', '60', '40', '20', '0']
-  for (let i = 0; i < yLabels.length; i++) {
-    const y = waveAreaY + i * rowHeight
-    ctx.fillText(yLabels[i], waveAreaX - 10, y)
-  }
-  
-  if (currentPoints.length < 2) {
-    ctx.draw()
-    return
-  }
-  
-  const minVal = Math.min(...currentPoints)
-  const maxVal = Math.max(...currentPoints)
-  const range = maxVal - minVal || 1
-  const amplitude = waveAreaHeight * 0.8
-  
-  // 计算所有点的坐标
-  const stepX = waveAreaWidth / totalPoints
-  const points: { x: number; y: number }[] = []
-  for (let i = 0; i < currentPoints.length; i++) {
-    const normalized = (currentPoints[i] - minVal) / range
-    const y = waveAreaY + waveAreaHeight - (normalized * amplitude) - (waveAreaHeight * 0.1)
-    const x = waveAreaX + i * stepX
-    points.push({ x, y })
-  }
-  
-  // 使用三次贝塞尔曲线（Catmull-Rom 样条转换）绘制非常平滑的波形
-  ctx.beginPath()
-  ctx.moveTo(points[0].x, points[0].y)
-  
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[Math.max(0, i - 1)]
-    const p1 = points[i]
-    const p2 = points[i + 1]
-    const p3 = points[Math.min(points.length - 1, i + 2)]
-    
-    // Catmull-Rom 到 Cubic Bezier 的控制点计算
-    const tension = 0.3
-    const cp1x = p1.x + (p2.x - p0.x) * tension
-    const cp1y = p1.y + (p2.y - p0.y) * tension
-    const cp2x = p2.x - (p3.x - p1.x) * tension
-    const cp2y = p2.y - (p3.y - p1.y) * tension
-    
-    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y)
-  }
-  
-  // 渐变色波形
-  const gradient = ctx.createLinearGradient(waveAreaX, 0, w, 0)
-  gradient.addColorStop(0, 'rgba(0, 200, 255, 0.6)')
-  gradient.addColorStop(0.5, 'rgba(0, 200, 255, 0.9)')
-  gradient.addColorStop(1, 'rgba(0, 255, 200, 1)')
-  
-  ctx.setStrokeStyle(gradient)
-  ctx.setLineWidth(2)
-  ctx.setLineCap('round')
-  ctx.setLineJoin('round')
-  ctx.stroke()
-  
-  // 绘制发光圆点（当前绘制位置）
-  if (points.length > 0) {
-    const lastPoint = points[points.length - 1]
-    
-    ctx.beginPath()
-    ctx.arc(lastPoint.x, lastPoint.y, 6, 0, Math.PI * 2)
-    ctx.setFillStyle('rgba(0, 200, 255, 0.3)')
-    ctx.fill()
-    
-    ctx.beginPath()
-    ctx.arc(lastPoint.x, lastPoint.y, 4, 0, Math.PI * 2)
-    ctx.setFillStyle('#00d4ff')
-    ctx.fill()
-    
-    ctx.beginPath()
-    ctx.arc(lastPoint.x, lastPoint.y, 8, 0, Math.PI * 2)
-    ctx.setStrokeStyle('rgba(0, 200, 255, 0.4)')
-    ctx.setLineWidth(2)
-    ctx.stroke()
-  }
-  
-  ctx.draw()
+  chart.setOption({
+    series: [{
+      data: currentPoints
+    }]
+  })
 }
 </script>
 
@@ -356,8 +288,18 @@ function drawWaveform() {
   letter-spacing: 4rpx;
 }
 
-.waveform-canvas {
+.chart-container {
+  position: absolute;
+  top: 80px;
+  left: 70rpx;
+  right: 70rpx;
+  bottom: 30px;
   z-index: 10;
+}
+
+.waveform-chart {
+  width: 100%;
+  height: 100%;
 }
 
 .progress-center {

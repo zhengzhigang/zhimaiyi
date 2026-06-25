@@ -8,8 +8,7 @@ import {
   buildPowerOffFrame,
   buildRawLightCollectFrame,
   buildStopFrame,
-  parseFrame,
-  extractADCValues,
+  dataParser,
 } from './protocol'
 import {
   CHAR_READ_UUID,
@@ -18,13 +17,14 @@ import {
   COLLECT_DURATION_QUICK,
   HEART_BEAT_INTERVAL,
   SERVICE_UUID,
-  CMD_RAW_LIGHT_COLLECT
 } from './constants'
 import type { BLEDeviceInfo, DetectType } from './types'
 import { CollectMode } from './types'
 
 /** 实时波形数据回调 */
 type OnWaveDataCallback = (points: number[]) => void
+/** 心率血氧回调 */
+type OnHeartRateSpo2Callback = (heartRate: number, spo2: number) => void
 /** 采集进度回调，progress: 0-100, remaining: 剩余秒数 */
 type OnProgressCallback = (progress: number, remaining: number) => void
 /** 检测完成回调，data: 完整波形数据 */
@@ -72,6 +72,7 @@ class BluetoothManager {
 
   // ========== 回调函数 ==========
   private onWaveData: OnWaveDataCallback | null = null
+  private onHeartRateSpo2: OnHeartRateSpo2Callback | null = null
   private onProgress: OnProgressCallback | null = null
   private onDetectComplete: OnDetectCompleteCallback | null = null
   private onError: OnErrorCallback | null = null
@@ -83,7 +84,19 @@ class BluetoothManager {
   /** 上次采样时间戳 */
   private lastSampleTime = 0
 
-  private constructor() {}
+  private constructor() {
+    // 初始化数据解析器回调
+    dataParser.setCallback((result) => {
+      if (result.heartRate !== undefined && result.spo2 !== undefined) {
+        this.onHeartRateSpo2?.(result.heartRate, result.spo2)
+      }
+      if (result.waveValues?.length) {
+        this.sampleCount += result.waveValues.length
+        this.fullWaveData.push(...result.waveValues)
+        this.onWaveData?.(result.waveValues)
+      }
+    })
+  }
 
   /** 获取单例实例 */
   public static getInstance(): BluetoothManager {
@@ -116,12 +129,14 @@ class BluetoothManager {
   /** 注册蓝牙事件回调 */
   public setCallbacks(options: {
     onWaveData?: OnWaveDataCallback
+    onHeartRateSpo2?: OnHeartRateSpo2Callback
     onProgress?: OnProgressCallback
     onDetectComplete?: OnDetectCompleteCallback
     onError?: OnErrorCallback
     onConnectionChange?: OnConnectionChangeCallback
   }) {
     this.onWaveData = options.onWaveData ?? null
+    this.onHeartRateSpo2 = options.onHeartRateSpo2 ?? null
     this.onProgress = options.onProgress ?? null
     this.onDetectComplete = options.onDetectComplete ?? null
     this.onError = options.onError ?? null
@@ -249,6 +264,7 @@ class BluetoothManager {
           const service = res.services.find(
             (s) => s.uuid.toUpperCase() === SERVICE_UUID.toUpperCase(),
           )
+          console.log('===服务===', service)
           if (service) {
             this.discoverCharacteristics(deviceId, service.uuid, deviceName).then(resolve)
           } else {
@@ -279,6 +295,7 @@ class BluetoothManager {
         deviceId,
         serviceId,
         success: (res) => {
+          console.log('发现特征值成功', res)
           // 查找写特征值
           const writeChar = res.characteristics.find(
             (c) => c.uuid.toUpperCase() === CHAR_WRITE_UUID.toUpperCase(),
@@ -287,6 +304,7 @@ class BluetoothManager {
           const readChar = res.characteristics.find(
             (c) => c.uuid.toUpperCase() === CHAR_READ_UUID.toUpperCase(),
           )
+          console.log('===特征值===', writeChar, readChar)
 
           if (!writeChar || !readChar) {
             this.onError?.('未找到对应特征值')
@@ -298,6 +316,7 @@ class BluetoothManager {
           this.readCharId = readChar.uuid
           this.deviceId = deviceId
           this.deviceName = deviceName
+          console.log('===discoverCharacteristics===', writeChar, readChar)
 
           // 开启 notify 接收数据
           this.enableNotify(deviceId, serviceId, readChar.uuid).then((ok) => {
@@ -334,9 +353,11 @@ class BluetoothManager {
         characteristicId,
         state: true,
         success: () => {
+          console.log('开启通知成功', deviceId, serviceId, characteristicId)
           // 监听特征值变化，接收设备数据
           uni.onBLECharacteristicValueChange((res) => {
-            this.handleBLEData(res.value)
+            console.log('===onBLECharacteristicValueChange===', res)
+            this.handleBLEData(res.value as unknown as ArrayBuffer)
           })
           resolve(true)
         },
@@ -351,21 +372,10 @@ class BluetoothManager {
 
   /**
    * 处理蓝牙接收到的数据
-   * 解析帧 → 提取 ADC 值 → 累积到 fullWaveData → 触发 onWaveData 回调
+   * 使用 DataParser 解析数据流（缓冲区管理 + 异常过滤）
    */
   private handleBLEData(value: ArrayBuffer) {
-    const frame = parseFrame(value)
-    if (!frame) return
-
-    // 仅处理原始光电容积波采集数据
-    if (frame.cmd === CMD_RAW_LIGHT_COLLECT) {
-      const adcValues = extractADCValues(frame.data)
-      if (adcValues.length > 0) {
-        this.sampleCount += adcValues.length
-        this.fullWaveData.push(...adcValues)
-        this.onWaveData?.(adcValues)
-      }
-    }
+    dataParser.parse(value)
   }
 
   // ========== 心跳保活 ==========
@@ -402,7 +412,8 @@ class BluetoothManager {
         deviceId: this.deviceId,
         serviceId: SERVICE_UUID,
         characteristicId: this.writeCharId,
-        value: buffer,
+        // uni-app 类型定义问题，实际需要 ArrayBuffer
+        value: buffer as unknown as number[],
         success: () => resolve(true),
         fail: (err) => {
           console.error('写入失败', err)
@@ -437,6 +448,10 @@ class BluetoothManager {
     this.fullWaveData = []
     this.sampleCount = 0
     this.lastSampleTime = Date.now()
+
+    // 重置并启动数据解析器的波形采集模式
+    dataParser.reset()
+    dataParser.setCollectingMode(true)
 
     // 发送采集指令
     const ok = await this.writeData(buildRawLightCollectFrame())
@@ -490,6 +505,8 @@ class BluetoothManager {
       await this.writeData(buildStopFrame())
       this.isDetecting = false
       this.collectMode = CollectMode.MODE_STOP
+      // 停止数据解析器的波形采集模式
+      dataParser.setCollectingMode(false)
       // 触发完成回调，传递完整波形数据副本
       this.onDetectComplete?.([...this.fullWaveData])
     }
@@ -529,6 +546,7 @@ class BluetoothManager {
     this.stopDetect()
     this.fullWaveData = []
     this.sampleCount = 0
+    dataParser.reset()
   }
 }
 
