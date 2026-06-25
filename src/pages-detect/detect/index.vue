@@ -44,8 +44,6 @@ const isConnected = computed(() => bluetoothStore.isConnected)
 const progress = computed(() => bluetoothStore.collectProgress)
 const isDetecting = computed(() => bluetoothStore.isDetecting)
 
-const useMock = ref(true)
-
 const cycleDuration = 5
 const drawInterval = 50
 const totalDraws = cycleDuration * 1000 / drawInterval
@@ -55,7 +53,7 @@ const totalPoints = Math.floor(totalDraws * pointsPerDraw)
 let drawTimer: ReturnType<typeof setInterval> | null = null
 let baselineQueue: number[] = []
 let smoothBaseline = { value: DEFAULT_VERTICAL_BASE_OFFSET }
-let lastFilterVal = 55
+let lastFilterVal = 0
 let continueErrorCount = 0
 let currentPoints: number[] = []
 
@@ -198,22 +196,7 @@ function getChartOption() {
 function startDrawLoop() {
   stopDrawLoop()
   
-  let mockTime = 0
-  const timeStep = cycleDuration / totalPoints
-  
   drawTimer = setInterval(() => {
-    if (useMock.value) {
-      for (let i = 0; i < pointsPerDraw; i++) {
-        const val = generateMockWavePoint(mockTime)
-        bluetoothStore.wavePoints.push(val)
-        mockTime += timeStep
-        
-        if (mockTime >= cycleDuration) {
-          mockTime = 0
-        }
-      }
-    }
-    
     processNewData()
     updateChart()
   }, drawInterval)
@@ -224,33 +207,6 @@ function stopDrawLoop() {
     clearInterval(drawTimer)
     drawTimer = null
   }
-}
-
-function generateMockWavePoint(t: number): number {
-  const beatPeriod = 1.0
-  const phase = (t % beatPeriod) / beatPeriod
-  
-  let value = 55
-  
-  if (phase < 0.15) {
-    const riseProgress = phase / 0.15
-    value += Math.pow(riseProgress, 0.5) * 40
-  } else if (phase < 0.25) {
-    const fallProgress = (phase - 0.15) / 0.1
-    value += 40 * (1 - Math.pow(fallProgress, 0.8))
-    value -= 8 * Math.sin(fallProgress * Math.PI)
-  } else if (phase < 0.45) {
-    const diastolicProgress = (phase - 0.25) / 0.2
-    value += 32 * Math.exp(-Math.pow((diastolicProgress - 0.3) * 5, 2))
-  } else {
-    const decayProgress = (phase - 0.45) / 0.55
-    value += 15 * Math.exp(-decayProgress * 3)
-  }
-  
-  value += Math.sin(t * 0.3) * 2
-  value += (Math.random() - 0.5) * 0.5
-  
-  return Math.round(Math.max(0, Math.min(100, value)))
 }
 
 function processNewData() {
@@ -273,16 +229,12 @@ function processNewData() {
       continueErrorCount = 0
     }
 
-    if (useMock.value) {
-      lastFilterVal = firstOrderFilter(v, lastFilterVal, 0.15)
-    } else {
-      v = removeDCAndDrift(v, baselineQueue, smoothBaseline)
-      lastFilterVal = firstOrderFilter(v, lastFilterVal, DEFAULT_FILTER_ALPHA)
-    }
+    v = removeDCAndDrift(v, baselineQueue, smoothBaseline)
+    lastFilterVal = firstOrderFilter(v, lastFilterVal, DEFAULT_FILTER_ALPHA)
     
     if (currentPoints.length >= totalPoints) {
       currentPoints = []
-      lastFilterVal = 55
+      lastFilterVal = 0
     }
     currentPoints.push(lastFilterVal)
   }
