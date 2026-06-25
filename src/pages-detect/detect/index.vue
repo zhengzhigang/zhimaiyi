@@ -55,10 +55,17 @@ const canvasStyle = computed(() => ({
 let drawTimer: ReturnType<typeof setInterval> | null = null
 let baselineQueue: number[] = []
 let smoothBaseline = { value: 32768 }
-let lastFilterVal = 0
+let lastFilterVal = 55
 let continueErrorCount = 0
 let currentPoints: number[] = []
 let currentX = 0
+
+// 周期配置
+const cycleDuration = 5 // 5秒一个周期
+const drawInterval = 50 // 50ms 绘制一次
+const totalDraws = cycleDuration * 1000 / drawInterval // 5秒内绘制次数 = 100
+const pointsPerDraw = 3 // 每次绘制新增的数据点数
+const totalPoints = Math.floor(totalDraws * pointsPerDraw) // 5秒内总数据点数 = 300
 
 onLoad((options) => {
   if (options?.mode) {
@@ -132,7 +139,7 @@ function startDrawLoop() {
   drawTimer = setInterval(() => {
     processNewData()
     drawWaveform()
-  }, 50)
+  }, drawInterval)
 }
 
 function stopDrawLoop() {
@@ -165,9 +172,10 @@ function processNewData() {
     v = removeDCAndDrift(v, baselineQueue, smoothBaseline)
     lastFilterVal = firstOrderFilter(v, lastFilterVal, 0.3)
     
-    if (currentPoints.length >= canvasWidth.value) {
+    if (currentPoints.length >= totalPoints) {
       currentPoints = []
       currentX = 0
+      lastFilterVal = 55
     }
     currentPoints.push(lastFilterVal)
   }
@@ -178,41 +186,60 @@ function drawWaveform() {
   const w = canvasWidth.value
   const h = canvasHeight.value
   
-  // y轴刻度区域宽度
-  const yAxisWidth = 50
-  // 波形绘制区域
-  const waveAreaX = yAxisWidth
-  const waveAreaWidth = w - yAxisWidth
-  const waveAreaHeight = h
+  const paddingTop = 20
+  const paddingBottom = 50
+  const waveAreaHeight = h - paddingTop - paddingBottom
+  const waveAreaY = paddingTop
+  const waveAreaWidth = w - 60
+  const waveAreaX = 60
   
-  // 绘制背景（深绿色）
-  ctx.setFillStyle('#0a4a48')
+  // 绘制背景（深蓝色）
+  ctx.setFillStyle('#0a1628')
   ctx.fillRect(0, 0, w, h)
   
-  // 绘制y轴刻度
+  // 绘制网格线
+  ctx.setStrokeStyle('rgba(100, 150, 200, 0.15)')
+  ctx.setLineWidth(1)
+  
+  const gridRows = 6
+  const gridCols = 10
+  const rowHeight = waveAreaHeight / (gridRows - 1)
+  const colWidth = waveAreaWidth / gridCols
+  
+  for (let i = 0; i < gridRows; i++) {
+    const y = waveAreaY + i * rowHeight
+    ctx.beginPath()
+    ctx.moveTo(waveAreaX, y)
+    ctx.lineTo(w, y)
+    ctx.stroke()
+  }
+  
+  for (let i = 0; i <= gridCols; i++) {
+    const x = waveAreaX + i * colWidth
+    ctx.beginPath()
+    ctx.moveTo(x, waveAreaY)
+    ctx.lineTo(x, waveAreaY + waveAreaHeight)
+    ctx.stroke()
+  }
+  
+  // 中央参考线
+  ctx.setStrokeStyle('rgba(100, 150, 200, 0.4)')
+  const centerY = waveAreaY + waveAreaHeight / 2
+  ctx.beginPath()
+  ctx.moveTo(waveAreaX, centerY)
+  ctx.lineTo(w, centerY)
+  ctx.stroke()
+  
+  // 绘制 Y 轴刻度标签
   ctx.setFillStyle('rgba(255, 255, 255, 0.7)')
   ctx.setFontSize(12)
   ctx.setTextAlign('right')
   ctx.setTextBaseline('middle')
   
   const yLabels = ['100', '80', '60', '40', '20', '0']
-  const labelCount = yLabels.length
-  
-  for (let i = 0; i < labelCount; i++) {
-    const y = (waveAreaHeight / (labelCount - 1)) * i
-    ctx.fillText(yLabels[i], yAxisWidth - 10, y)
-  }
-  
-  // 绘制水平网格线
-  ctx.setStrokeStyle('rgba(255, 255, 255, 0.3)')
-  ctx.setLineWidth(1)
-  
-  for (let i = 0; i < labelCount; i++) {
-    const y = (waveAreaHeight / (labelCount - 1)) * i
-    ctx.beginPath()
-    ctx.moveTo(waveAreaX, y)
-    ctx.lineTo(w, y)
-    ctx.stroke()
+  for (let i = 0; i < yLabels.length; i++) {
+    const y = waveAreaY + i * rowHeight
+    ctx.fillText(yLabels[i], waveAreaX - 10, y)
   }
   
   if (currentPoints.length < 2) {
@@ -223,32 +250,71 @@ function drawWaveform() {
   const minVal = Math.min(...currentPoints)
   const maxVal = Math.max(...currentPoints)
   const range = maxVal - minVal || 1
+  const amplitude = waveAreaHeight * 0.8
   
-  // 计算波形点坐标
-  const stepX = waveAreaWidth / Math.max(currentPoints.length, 1)
-  const amplitude = waveAreaHeight * 0.85
-  
-  // 绘制波形（白色线条）
-  ctx.beginPath()
-  
+  // 计算所有点的坐标
+  const stepX = waveAreaWidth / totalPoints
+  const points: { x: number; y: number }[] = []
   for (let i = 0; i < currentPoints.length; i++) {
     const normalized = (currentPoints[i] - minVal) / range
-    const y = waveAreaHeight - (normalized * amplitude) - (waveAreaHeight * 0.075)
+    const y = waveAreaY + waveAreaHeight - (normalized * amplitude) - (waveAreaHeight * 0.1)
     const x = waveAreaX + i * stepX
-    
-    if (i === 0) {
-      ctx.moveTo(x, y)
-    } else {
-      ctx.lineTo(x, y)
-  }
+    points.push({ x, y })
   }
   
-  ctx.setStrokeStyle('#ffffff')
+  // 使用三次贝塞尔曲线（Catmull-Rom 样条转换）绘制非常平滑的波形
+  ctx.beginPath()
+  ctx.moveTo(points[0].x, points[0].y)
+  
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[Math.max(0, i - 1)]
+    const p1 = points[i]
+    const p2 = points[i + 1]
+    const p3 = points[Math.min(points.length - 1, i + 2)]
+    
+    // Catmull-Rom 到 Cubic Bezier 的控制点计算
+    const tension = 0.3
+    const cp1x = p1.x + (p2.x - p0.x) * tension
+    const cp1y = p1.y + (p2.y - p0.y) * tension
+    const cp2x = p2.x - (p3.x - p1.x) * tension
+    const cp2y = p2.y - (p3.y - p1.y) * tension
+    
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y)
+  }
+  
+  // 渐变色波形
+  const gradient = ctx.createLinearGradient(waveAreaX, 0, w, 0)
+  gradient.addColorStop(0, 'rgba(0, 200, 255, 0.6)')
+  gradient.addColorStop(0.5, 'rgba(0, 200, 255, 0.9)')
+  gradient.addColorStop(1, 'rgba(0, 255, 200, 1)')
+  
+  ctx.setStrokeStyle(gradient)
   ctx.setLineWidth(2)
   ctx.setLineCap('round')
   ctx.setLineJoin('round')
   ctx.stroke()
-
+  
+  // 绘制发光圆点（当前绘制位置）
+  if (points.length > 0) {
+    const lastPoint = points[points.length - 1]
+    
+    ctx.beginPath()
+    ctx.arc(lastPoint.x, lastPoint.y, 6, 0, Math.PI * 2)
+    ctx.setFillStyle('rgba(0, 200, 255, 0.3)')
+    ctx.fill()
+    
+    ctx.beginPath()
+    ctx.arc(lastPoint.x, lastPoint.y, 4, 0, Math.PI * 2)
+    ctx.setFillStyle('#00d4ff')
+    ctx.fill()
+    
+    ctx.beginPath()
+    ctx.arc(lastPoint.x, lastPoint.y, 8, 0, Math.PI * 2)
+    ctx.setStrokeStyle('rgba(0, 200, 255, 0.4)')
+    ctx.setLineWidth(2)
+    ctx.stroke()
+  }
+  
   ctx.draw()
 }
 </script>
