@@ -46,8 +46,9 @@ const isDetecting = computed(() => bluetoothStore.isDetecting)
 const canvasStyle = computed(() => ({
   position: 'absolute',
   top: '80px',
-  left: '30px',
-  width: `${canvasWidth.value}px`,
+  left: '70rpx',
+  right: '70rpx',
+  width: 'auto',
   height: `${canvasHeight.value}px`,
 }))
 
@@ -160,7 +161,7 @@ function processNewData() {
     } else {
       continueErrorCount = 0
     }
-    
+
     v = removeDCAndDrift(v, baselineQueue, smoothBaseline)
     lastFilterVal = firstOrderFilter(v, lastFilterVal, 0.3)
     
@@ -239,7 +240,7 @@ function drawWaveform() {
       ctx.moveTo(x, y)
     } else {
       ctx.lineTo(x, y)
-    }
+  }
   }
   
   ctx.setStrokeStyle('#ffffff')
@@ -247,7 +248,7 @@ function drawWaveform() {
   ctx.setLineCap('round')
   ctx.setLineJoin('round')
   ctx.stroke()
-  
+
   ctx.draw()
 }
 </script>
