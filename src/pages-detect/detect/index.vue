@@ -32,6 +32,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import LandscapePage from '@/components/layout/LandscapePage.vue'
 import { useBluetoothStore } from '@/store/bluetooth'
 import { removeDCAndDrift, firstOrderFilter, isWaveValueValid } from '@/utils/bluetooth/algorithms'
+import { CHARACTERISTIC_UUID } from '@/utils/bluetooth/constants'
 
 const bluetoothStore = useBluetoothStore()
 
@@ -101,7 +102,7 @@ async function startDetect() {
       content: '蓝牙设备未连接，是否尝试连接？',
       success: (res) => {
         if (res.confirm) {
-          bluetoothStore.initAndConnect('PULSE').then(() => {
+          bluetoothStore.initAndConnect(CHARACTERISTIC_UUID).then(() => {
             if (isConnected.value) {
               doStartDetect()
             }
@@ -129,7 +130,7 @@ async function doStartDetect() {
 function retryDetect() {
   bluetoothStore.resetDetect()
   currentPoints = []
-  currentX = 0
+   currentX = 0
   drawProgress = 0
   startDetect()
 }
@@ -276,7 +277,7 @@ function drawWaveform() {
     ctx.draw()
     return
   }
-  
+
   // 只使用已有数据，不填充
   const displayPoints = currentPoints.slice(0, drawLength + 1)
   
@@ -284,16 +285,16 @@ function drawWaveform() {
   const maxVal = Math.max(...displayPoints)
   const range = maxVal - minVal || 1
   const amplitude = waveAreaHeight * 0.8
-  
-  const points: { x: number; y: number }[] = []
-  
+
+   const points: { x: number; y: number }[] = []
+
   for (let i = 0; i < displayPoints.length; i++) {
     const normalized = (displayPoints[i] - minVal) / range
     const y = waveAreaY + waveAreaHeight - (normalized * amplitude) - (waveAreaHeight * 0.1)
     const x = waveAreaX + i * stepX
     points.push({ x, y })
   }
-  
+
   // 插值（如果数据足够）
   if (currentPoints.length > drawLength + 1) {
     const nextVal = currentPoints[drawLength + 1]
@@ -340,7 +341,7 @@ function drawWaveform() {
   ctx.setLineCap('round')
   ctx.setLineJoin('round')
   ctx.stroke()
-  
+
   if (points.length > 0) {
     const lastPoint = points[points.length - 1]
     
@@ -348,7 +349,7 @@ function drawWaveform() {
     ctx.arc(lastPoint.x, lastPoint.y, 6, 0, Math.PI * 2)
     ctx.setFillStyle('rgba(0, 200, 255, 0.3)')
     ctx.fill()
-    
+
     ctx.beginPath()
     ctx.arc(lastPoint.x, lastPoint.y, 4, 0, Math.PI * 2)
     ctx.setFillStyle('#00d4ff')

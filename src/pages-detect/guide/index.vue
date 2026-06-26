@@ -28,7 +28,8 @@ import { useBluetoothStore } from '@/store/bluetooth'
 import { 
   DEFAULT_FILTER_ALPHA, 
   DEFAULT_VERTICAL_BASE_OFFSET,
-  SERVICE_UUID
+  SERVICE_UUID,
+  CHARACTERISTIC_UUID
 } from '@/utils/bluetooth/constants'
 
 const bluetoothStore = useBluetoothStore()
@@ -68,7 +69,7 @@ const tryConnect = () => {
   // 真机上需要使用设备名称匹配，不能用 MAC 地址
   // 可选：传入设备名称关键字如 'Redmi'、'AirDots'、'PULSE' 等
   // 传空则连接扫描到的第一个设备
-  bluetoothStore.initAndConnect('AA7F5100-4F39-ACC5-EE84-3245B0C10C83').then(() => {
+  bluetoothStore.initAndConnect(CHARACTERISTIC_UUID).then(() => {
     loading.value = false
     if (bluetoothStore.isConnected) {
       navigateToDetect()
