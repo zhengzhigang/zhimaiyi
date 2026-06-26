@@ -12,6 +12,7 @@
     </view>
 
     <canvas
+      v-show="!paramPanelVisible"
       canvas-id="waveformCanvas"
       id="waveformCanvas"
       class="waveform-canvas"
@@ -22,48 +23,56 @@
       <sar-progress-circle root-class="progress-circle" :percent="progress" :thickness="10" size="70rpx" color="#00D4A4" />
     </view>
 
-    <view class="param-entry" @click="openParamPanel">
-      <text class="param-entry-text">调整参数</text>
-    </view>
+    <cover-view class="param-entry" @click="openParamPanel">
+      <cover-view class="param-entry-text">调整参数</cover-view>
+    </cover-view>
 
-    <view v-if="paramPanelVisible" class="param-mask" @click="closeParamPanel"></view>
-    <view class="param-panel" :class="{ 'param-panel--show': paramPanelVisible }">
-      <view class="param-panel-header">
-        <text class="param-title">波形参数</text>
-        <text class="param-close" @click="closeParamPanel">取消</text>
-      </view>
+    <sar-popup
+      v-model:visible="paramPanelVisible"
+      effect="slide-bottom"
+      :duration="220"
+      :root-style="{ borderRadius: '12rpx 12rpx 0 0' }"
+    >
+      <view class="param-panel-content">
+        <view class="param-panel-header">
+          <view class="param-title">波形参数</view>
+          <view class="param-close" @click="closeParamPanel">取消</view>
+        </view>
 
-      <view class="param-list">
-        <view v-for="item in paramControls" :key="item.key" class="param-row">
-          <view class="param-row-head">
-            <text class="param-label">{{ item.label }}</text>
-            <text class="param-value">{{ formatParamValue(item.key) }}</text>
+        <view class="param-list">
+          <view v-for="item in paramControls" :key="item.key" class="param-row">
+            <view class="param-row-head">
+              <view class="param-label">{{ item.label }}</view>
+              <view class="param-value">{{ formatParamValue(item.key) }}</view>
+            </view>
+            <view class="param-slider-wrapper">
+              <slider
+                class="param-slider"
+                :value="draftParams[item.key]"
+                :min="item.min"
+                :max="item.max"
+                :step="item.step"
+                activeColor="#27e0b8"
+                backgroundColor="#e0e0e0"
+                block-color="#ffffff"
+                block-size="18"
+                @changing="onParamSliderChange($event, item.key)"
+                @change="onParamSliderChange($event, item.key)"
+              />
+            </view>
           </view>
-          <slider
-            class="param-slider"
-            :value="draftParams[item.key]"
-            :min="item.min"
-            :max="item.max"
-            :step="item.step"
-            activeColor="#27e0b8"
-            backgroundColor="rgba(255, 255, 255, 0.18)"
-            block-color="#ffffff"
-            block-size="18"
-            @changing="onParamSliderChange($event, item.key)"
-            @change="onParamSliderChange($event, item.key)"
-          />
         </view>
-      </view>
 
-      <view class="param-actions">
-        <view class="param-btn param-btn--ghost" @click="resetDraftParams">
-          <text>重置</text>
-        </view>
-        <view class="param-btn param-btn--primary" @click="applyParamPanel">
-          <text>确定</text>
+        <view class="param-actions">
+          <view class="param-btn param-btn--ghost" @click="resetDraftParams">
+            <view>重置</view>
+          </view>
+          <view class="param-btn param-btn--primary" @click="applyParamPanel">
+            <view>确定</view>
+          </view>
         </view>
       </view>
-    </view>
+    </sar-popup>
   </view>
 </template>
 
@@ -73,7 +82,6 @@ import { onLoad } from '@dcloudio/uni-app'
 import { useBluetoothStore } from '@/store/bluetooth'
 import { firstOrderFilter, isWaveValueValid } from '@/utils/bluetooth/algorithms'
 import { CHARACTERISTIC_UUID } from '@/utils/bluetooth/constants'
-import { mockOximeter } from '@/utils/bluetooth/mock'
 
 interface Point {
   x: number
@@ -105,7 +113,6 @@ const bluetoothStore = useBluetoothStore()
 const mode = ref<'quick' | 'full'>('quick')
 const canvasWidth = ref(600)
 const canvasHeight = ref(300)
-const useMock = ref(false)
 const paramPanelVisible = ref(false)
 
 const defaultParams: WaveParams = {
@@ -130,7 +137,7 @@ const paramControls: ParamControl[] = [
 ]
 
 const isConnected = computed(() => bluetoothStore.isConnected)
-const progress = computed(() => (useMock.value ? 100 : bluetoothStore.collectProgress))
+const progress = computed(() => bluetoothStore.collectProgress)
 
 const canvasStyle = computed(() => ({
   position: 'absolute',
@@ -176,20 +183,12 @@ onMounted(() => {
   resetWaveState()
   startDrawLoop()
 
-  if (useMock.value) {
-    startMockDetect()
-  } else {
-    startDetect()
-  }
+  startDetect()
 })
 
 onUnmounted(() => {
   stopDrawLoop()
-  if (useMock.value) {
-    mockOximeter.stop()
-  } else {
-    bluetoothStore.stopCollect()
-  }
+  bluetoothStore.stopCollect()
 })
 
 function resetWaveState() {
@@ -263,12 +262,6 @@ function trimCycleForCurrentXStep() {
   drawProgress = Math.min(drawProgress, maxPoints - 1)
 }
 
-function startMockDetect() {
-  resetWaveState()
-  mockOximeter.setCallback(pushWaveData)
-  mockOximeter.start()
-}
-
 async function startDetect() {
   if (!isConnected.value) {
     uni.showModal({
@@ -295,30 +288,19 @@ async function doStartDetect() {
 }
 
 function retryDetect() {
-  if (useMock.value) {
-    mockOximeter.stop()
-    startMockDetect()
-  } else {
-    bluetoothStore.resetDetect()
-    resetWaveState()
-    startDetect()
-  }
+  bluetoothStore.resetDetect()
+  resetWaveState()
+  startDetect()
 }
 
 function goHome() {
-  if (useMock.value) {
-    mockOximeter.stop()
-  } else {
-    bluetoothStore.stopCollect()
-  }
+  bluetoothStore.stopCollect()
   uni.reLaunch({ url: '/pages/index/index' })
 }
 
 function startDrawLoop() {
   stopDrawLoop()
-  if (!useMock.value) {
-    drawTimer = setInterval(processBluetoothData, bluetoothPollInterval)
-  }
+  drawTimer = setInterval(processBluetoothData, bluetoothPollInterval)
   animationTimer = setInterval(() => {
     advanceDrawProgress()
     drawWaveform()
@@ -460,6 +442,7 @@ function drawWaveform() {
   drawGrid(ctx, w, waveAreaX, waveAreaY, waveAreaWidth, waveAreaHeight)
 
   const points = getDrawablePoints(waveAreaX, waveAreaY, waveAreaWidth, waveAreaHeight)
+  console.log('===points===', points)
   if (points.length < 2) {
     ctx.draw()
     return
@@ -650,31 +633,10 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
   letter-spacing: 2rpx;
 }
 
-.param-mask {
-  position: absolute;
-  inset: 0;
-  z-index: 30;
-  background: rgba(0, 0, 0, 0.35);
-}
-
-.param-panel {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 999;
-  box-sizing: border-box;
-  max-height: 78vh;
-  padding: 16rpx 40rpx 16rpx;
+.param-panel-content {
+  width: 100%;
+  background: #ffffff;
   border-radius: 12rpx 12rpx 0 0;
-  background: #081a2c;
-  box-shadow: 0 -10rpx 30rpx rgba(0, 0, 0, 0.28);
-  transform: translateY(105%);
-  transition: transform 0.22s ease;
-}
-
-.param-panel--show {
-  transform: translateY(0);
 }
 
 .param-panel-header {
@@ -682,52 +644,57 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 12rpx;
+  padding: 12rpx 40rpx 8rpx 46rpx;
+  border-bottom: 1rpx solid rgba(0, 0, 0, 0.1);
 }
 
 .param-title {
-  color: #ffffff;
+  color: #333333;
   font-size: 14rpx;
   font-weight: 600;
 }
 
 .param-close {
-  color: rgba(255, 255, 255, 0.66);
+  color: #333333;
   font-size: 14rpx;
+  padding: 8rpx 16rpx;
 }
 
 .param-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  column-gap: 28rpx;
-  row-gap: 10rpx;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12rpx;
+  padding: 0 40rpx;
 }
 
 .param-row {
-  min-width: 0;
+  width: calc(50% - 12rpx);
 }
 
 .param-row-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16rpx;
   margin-bottom: 2rpx;
 }
 
 .param-label {
-  color: rgba(255, 255, 255, 0.84);
+  color: #666666;
   font-size: 12rpx;
-  white-space: nowrap;
 }
 
 .param-value {
-  color: #27e0b8;
+  color: #07c160;
   font-size: 12rpx;
-  font-variant-numeric: tabular-nums;
 }
 
 .param-slider {
   margin: 0;
+}
+
+.param-slider-wrapper {
+  width: 100%;
 }
 
 .param-actions {
@@ -735,6 +702,7 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
   justify-content: space-between;
   gap: 18rpx;
   margin-top: 16rpx;
+  padding: 0 40rpx 16rpx;
 }
 
 .param-btn {
@@ -748,8 +716,8 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
 }
 
 .param-btn--ghost {
-  color: rgba(255, 255, 255, 0.78);
-  border: 1rpx solid rgba(255, 255, 255, 0.2);
+  color: #06221c;
+  border: 1rpx solid #27e0b8;
 }
 
 .param-btn--primary {
