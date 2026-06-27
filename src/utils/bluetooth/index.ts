@@ -196,7 +196,6 @@ class BluetoothManager {
               name: d.name,
               RSSI: d.RSSI,
             })
-            console.log('发现设备:', d.name, d.deviceId)
           }
         })
       }
@@ -237,14 +236,12 @@ class BluetoothManager {
       uni.createBLEConnection({
         deviceId,
         success: () => {
-          console.log('连接设备成功', deviceId, deviceName)
           // 延迟 1s 等待设备稳定后再发现服务
           setTimeout(() => {
             this.discoverServices(deviceId, deviceName).then(resolve)
           }, 1000)
         },
         fail: (err) => {
-          console.log('连接设备失败', deviceId, deviceName, err)
           console.error('连接设备失败', err, err)
           this.onError?.('连接设备失败')
           resolve(false)
@@ -259,12 +256,10 @@ class BluetoothManager {
       uni.getBLEDeviceServices({
         deviceId,
         success: (res) => {
-          console.log('发现服务成功', SERVICE_UUID, res.services)
           // 查找匹配的服务 UUID
           const service = res.services.find(
             (s) => s.uuid.toUpperCase() === SERVICE_UUID.toUpperCase(),
           )
-          console.log('===服务===', service)
           if (service) {
             this.discoverCharacteristics(deviceId, service.uuid, deviceName).then(resolve)
           } else {
@@ -295,7 +290,6 @@ class BluetoothManager {
         deviceId,
         serviceId,
         success: (res) => {
-          console.log('发现特征值成功', res)
           // 查找写特征值
           const writeChar = res.characteristics.find(
             (c) => c.uuid.toUpperCase() === CHAR_WRITE_UUID.toUpperCase(),
@@ -304,7 +298,6 @@ class BluetoothManager {
           const readChar = res.characteristics.find(
             (c) => c.uuid.toUpperCase() === CHAR_READ_UUID.toUpperCase(),
           )
-          console.log('===特征值===', writeChar, readChar)
 
           if (!writeChar || !readChar) {
             this.onError?.('未找到对应特征值')
@@ -316,7 +309,6 @@ class BluetoothManager {
           this.readCharId = readChar.uuid
           this.deviceId = deviceId
           this.deviceName = deviceName
-          console.log('===discoverCharacteristics===', writeChar, readChar)
 
           // 开启 notify 接收数据
           this.enableNotify(deviceId, serviceId, readChar.uuid).then((ok) => {
@@ -353,10 +345,8 @@ class BluetoothManager {
         characteristicId,
         state: true,
         success: () => {
-          console.log('开启通知成功', deviceId, serviceId, characteristicId)
           // 监听特征值变化，接收设备数据
           uni.onBLECharacteristicValueChange((res) => {
-            console.log('===onBLECharacteristicValueChange===', res)
             this.handleBLEData(res.value as unknown as ArrayBuffer)
           })
           resolve(true)

@@ -44,6 +44,14 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
   /** 平均采样率 */
   const avgSampleRate = ref(0)
 
+  // ========== 回调 ==========
+  /** 原始数据回调：蓝牙数据到达时立即调用，由页面注册用于即时处理 */
+  let rawDataCallback: ((points: number[]) => void) | null = null
+
+  function onRawData(cb: (points: number[]) => void) {
+    rawDataCallback = cb
+  }
+
   // ========== 进度 ==========
   /** 采集进度 0-100 */
   const collectProgress = ref(0)
@@ -95,12 +103,10 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
 
     // 扫描蓝牙设备
     const devices = await bluetoothManager.startScan()
-    console.log('扫描到的设备:', devices.map((item, index) => `${index}**${item.name || ''}**${item.deviceId}`))
     // 按名称匹配目标设备，未指定则取第一个
     const target = targetDeviceName
       ? devices.find((d) => d.deviceId?.includes(targetDeviceName))
       : devices[0]
-    console.log('目标设备:', targetDeviceName, target)
 
     if (devices.length === 0) {
       uni.showToast({ title: '未扫描到设备', icon: 'none' })
@@ -113,7 +119,6 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     }
 
     const connected = await bluetoothManager.connectDevice(target.deviceId, target.name || '')
-    console.log('连接设备:', target.deviceId, target.name || '', connected)
     if (connected) {
       updateConnectionState()
     }
@@ -179,7 +184,10 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     bluetoothManager.setCallbacks({
       /** 实时波形数据回调，限制最大显示点数防止绘制性能下降 */
       onWaveData: (points: number[]) => {
-        console.log('===onWaveData===', points)
+        // 立即回调页面处理数据（不依赖 setInterval 轮询）
+        if (rawDataCallback) {
+          rawDataCallback(points)
+        }
         const maxDisplay = 600
         const current = wavePoints.value
         const combined = [...current, ...points]
@@ -194,7 +202,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
         collectProgress.value = progress
         remainingTime.value = remaining
       },
-      /** 检测完成回调，全面检测自动上传数据 */
+      /** 检测完成回调，自动上传数据 */
       onDetectComplete: (data: number[]) => {
         fullWaveData.value = data
         isDetecting.value = false
@@ -202,8 +210,10 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
         collectMode.value = CollectMode.MODE_STOP
         uni.showToast({ title: '检测完成', icon: 'success' })
 
-        if (detectType.value === 'full' && data.length > 0) {
-          uploadFullWaveData(data)
+        // 快速检测和全面检测都上传数据
+        const uploadData = detectType.value === 'full' ? data : wavePoints.value
+        if (uploadData.length > 0) {
+          uploadFullWaveData(uploadData)
         }
       },
       /** 错误回调 */
@@ -242,7 +252,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
    */
   async function uploadFullWaveData(data: number[]) {
     try {
-      uni.showLoading({ title: '正在分析数据...' })
+      uni.showLoading({ title: '数据上传中...' })
 
       // 1. 去直流偏置和基线漂移
       const baselineQueue: number[] = []
@@ -269,8 +279,10 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
 
       const res = await uploadWaveResult(payload)
       uni.hideLoading()
-      console.log('波形上传结果', res)
-      uni.showToast({ title: '分析完成', icon: 'success' })
+
+      // 跳转到检测结果页面
+      const resultStr = encodeURIComponent(JSON.stringify(res))
+      // uni.redirectTo({ url: `/pages-detect/result/index?data=${resultStr}` })
       return res
     } catch (err) {
       uni.hideLoading()
@@ -336,5 +348,6 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     powerOff,
     uploadFullWaveData,
     resetDetect,
+    onRawData,
   }
 })
