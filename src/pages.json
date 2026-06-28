@@ -56,7 +56,7 @@
           "path": "select-mode/index",
           "type": "page",
           "style": {
-            "navigationBarTitleText": "横屏页面",
+            "navigationBarTitleText": "检测模式选择",
             "mp-weixin": {
               "pageOrientation": "landscape" // 强制横屏
             }
@@ -78,7 +78,7 @@
           "path": "guide/index",
           "type": "page",
           "style": {
-            "navigationBarTitleText": "横屏页面",
+            "navigationBarTitleText": "操作引导",
             "mp-weixin": {
               "pageOrientation": "landscape" // 强制横屏
             }
@@ -91,7 +91,7 @@
           "type": "page",
           "style": {
             "navigationStyle": "custom",
-            "navigationBarTitleText": "检测中"
+            "navigationBarTitleText": "波形检测"
           }
         },
         // #endif
@@ -100,7 +100,7 @@
           "path": "detect/index",
           "type": "page",
           "style": {
-            "navigationBarTitleText": "横屏页面",
+            "navigationBarTitleText": "波形检测",
             "mp-weixin": {
               "pageOrientation": "landscape" // 强制横屏
             }

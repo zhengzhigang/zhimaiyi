@@ -125,7 +125,7 @@ const navigateToDetect = () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  margin: 20rpx 0 15px 0;
+  margin: 16rpx 0 15px 0;
 }
 
 .tip-text {
@@ -136,11 +136,11 @@ const navigateToDetect = () => {
 
 .start-btn {
   align-self: center;
-  width: 220rpx;
-  height: 50rpx;
+  width: 200rpx;
+  height: 48rpx;
   margin-bottom: 10prx;
   background-color: #9b59b6;
-  border-radius: 25rpx;
+  border-radius: 24rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -156,7 +156,7 @@ const navigateToDetect = () => {
 }
 
 .start-btn-text {
-  font-size: 20rpx;
+  font-size: 18rpx;
   font-weight: bold;
   color: #ffffff;
 }

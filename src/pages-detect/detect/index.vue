@@ -20,12 +20,12 @@
     ></canvas>
 
     <view class="progress-center">
-      <sar-progress-circle root-class="progress-circle" :percent="progress" :thickness="10" size="70rpx" color="#00D4A4" />
+      <sar-progress-circle root-class="progress-circle" :percent="progress" :thickness="10" size="66rpx" color="#00D4A4" />
     </view>
 
-    <cover-view class="param-entry" @click="openParamPanel">
-      <cover-view class="param-entry-text">调整参数</cover-view>
-    </cover-view>
+    <view class="param-entry" @click="openParamPanel">
+      <view class="param-entry-text">调整参数</view>
+    </view>
 
     <sar-popup
       v-model:visible="paramPanelVisible"
@@ -164,7 +164,7 @@ const baselineWindow = 120
 let drawQueue: number[] = []
 
 // ===== 周期管理：一个周期 = 从左到右扫描一屏 =====
-let currentX = 70 // 当前绘制 X 坐标（waveAreaX）
+let currentX = 30 // 当前绘制 X 坐标（waveAreaX，留出刻度标签空间）
 let cyclePoints: Point[] = [] // 当前周期已绘制的坐标点
 
 // ===== 绘制速率控制：严格匹配 200Hz 数据率，保证一屏 ≈ 5 个心跳 =====
@@ -234,7 +234,7 @@ function resetWaveState() {
   continueErrorCount = 0
   isFirstDataPoint = true
   drawQueue = []
-  currentX = 70
+  currentX = 30
   cyclePoints = []
 }
 
@@ -361,8 +361,8 @@ function drawIncremental() {
   const paddingBottom = 36
   const waveAreaHeight = h - paddingTop - paddingBottom
   const waveAreaY = paddingTop
-  const waveAreaX = 70
-  const waveAreaWidth = w - waveAreaX - 8
+  const waveAreaX = 30
+  const waveAreaWidth = w - waveAreaX
   const xStep = appliedParams.xStep
 
   // 虚拟时钟：按 200Hz 速率匀速消耗队列，数据不够就等，保证一屏 ≈ 5 个心跳
@@ -387,8 +387,6 @@ function drawIncremental() {
   }
 
   // 全量绘制当前周期
-  ctx.setFillStyle('#071527')
-  ctx.fillRect(0, 0, w, h)
   drawGrid(ctx, w, waveAreaX, waveAreaY, waveAreaWidth, waveAreaHeight)
 
   if (cyclePoints.length < 2) {
@@ -396,12 +394,7 @@ function drawIncremental() {
     return
   }
 
-  // 波形渐变
-  const gradient = ctx.createLinearGradient(waveAreaX, 0, w, 0)
-  gradient.addColorStop(0, 'rgba(14, 203, 255, 0.7)')
-  gradient.addColorStop(0.55, 'rgba(39, 224, 184, 0.95)')
-  gradient.addColorStop(1, 'rgba(177, 255, 116, 1)')
-  ctx.setStrokeStyle(gradient)
+  ctx.setStrokeStyle('rgba(39, 224, 184, 0.95)')
   ctx.setLineWidth(2)
   ctx.setLineCap('round')
   ctx.setLineJoin('round')
@@ -497,11 +490,9 @@ function drawCanvasBackground() {
   const paddingBottom = 36
   const waveAreaHeight = h - paddingTop - paddingBottom
   const waveAreaY = paddingTop
-  const waveAreaX = 70
-  const waveAreaWidth = w - waveAreaX - 8
+  const waveAreaX = 30
+  const waveAreaWidth = w - waveAreaX
 
-  ctx.setFillStyle('#071527')
-  ctx.fillRect(0, 0, w, h)
   drawGrid(ctx, w, waveAreaX, waveAreaY, waveAreaWidth, waveAreaHeight)
   ctx.draw()
 }
@@ -515,11 +506,9 @@ function drawGrid(
   waveAreaHeight: number,
 ) {
   const gridRows = 6
-  const gridCols = 10
   const rowHeight = waveAreaHeight / (gridRows - 1)
-  const colWidth = waveAreaWidth / gridCols
 
-  ctx.setStrokeStyle('rgba(113, 180, 229, 0.16)')
+  ctx.setStrokeStyle('rgba(113, 180, 229, 0.3)')
   ctx.setLineWidth(1)
   for (let i = 0; i < gridRows; i++) {
     const y = waveAreaY + i * rowHeight
@@ -529,28 +518,13 @@ function drawGrid(
     ctx.stroke()
   }
 
-  for (let i = 0; i <= gridCols; i++) {
-    const x = waveAreaX + i * colWidth
-    ctx.beginPath()
-    ctx.moveTo(x, waveAreaY)
-    ctx.lineTo(x, waveAreaY + waveAreaHeight)
-    ctx.stroke()
-  }
-
-  ctx.setStrokeStyle('rgba(113, 180, 229, 0.36)')
-  const centerY = waveAreaY + waveAreaHeight / 2
-  ctx.beginPath()
-  ctx.moveTo(waveAreaX, centerY)
-  ctx.lineTo(canvasW, centerY)
-  ctx.stroke()
-
-  ctx.setFillStyle('rgba(255, 255, 255, 0.68)')
-  ctx.setFontSize(12)
-  ctx.setTextAlign('right')
+  ctx.setFillStyle('rgba(255, 255, 255, 0.5)')
+  ctx.setFontSize(11)
+  ctx.setTextAlign('left')
   ctx.setTextBaseline('middle')
   const yLabels = ['100', '80', '60', '40', '20', '0']
   for (let i = 0; i < yLabels.length; i++) {
-    ctx.fillText(yLabels[i], waveAreaX - 10, waveAreaY + i * rowHeight)
+    ctx.fillText(yLabels[i], 4, waveAreaY + i * rowHeight)
   }
 }
 
@@ -586,7 +560,7 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
 
 .top-bar {
   position: absolute;
-  top: 15px;
+  top: 12px;
   left: 30px;
   right: 30px;
   display: flex;
@@ -628,7 +602,7 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
 
 .progress-center {
   position: absolute;
-  top: 0;
+  top: 6rpx;
   left: 50%;
   transform: translateX(-50%);
   z-index: 21;
@@ -650,7 +624,7 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
   right: 15rpx;
   bottom: 15rpx;
   z-index: 998;
-  padding: 6rpx 18rpx;
+  padding: 6rpx 12rpx;
   border: 1rpx solid rgba(39, 224, 184, 0.55);
   border-radius: 24rpx;
   background: rgba(5, 22, 39, 0.76);
@@ -658,7 +632,7 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
 
 .param-entry-text {
   color: #dffdf7;
-  font-size: 14rpx;
+  font-size: 12rpx;
   letter-spacing: 2rpx;
 }
 

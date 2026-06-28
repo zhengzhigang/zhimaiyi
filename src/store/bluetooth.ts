@@ -213,7 +213,10 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
         // 快速检测和全面检测都上传数据
         const uploadData = detectType.value === 'full' ? data : wavePoints.value
         if (uploadData.length > 0) {
-          uploadFullWaveData(uploadData)
+          // 延迟 1.5s 让 toast 先显示完再弹出 loading
+          setTimeout(() => {
+            uploadFullWaveData(uploadData)
+          }, 1000)
         }
       },
       /** 错误回调 */
