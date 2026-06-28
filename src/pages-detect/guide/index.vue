@@ -138,7 +138,7 @@ const navigateToDetect = () => {
   align-self: center;
   width: 200rpx;
   height: 48rpx;
-  margin-bottom: 10prx;
+  margin-bottom: 10rpx;
   background-color: #9b59b6;
   border-radius: 24rpx;
   display: flex;

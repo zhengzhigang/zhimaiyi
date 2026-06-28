@@ -390,7 +390,7 @@ function drawIncremental() {
   drawGrid(ctx, w, waveAreaX, waveAreaY, waveAreaWidth, waveAreaHeight)
 
   if (cyclePoints.length < 2) {
-    ctx.draw()
+    ctx.draw(false, () => {})
     return
   }
 
@@ -422,7 +422,7 @@ function drawIncremental() {
   // 引导点
   drawLeadingDot(ctx, cyclePoints[cyclePoints.length - 1])
 
-  ctx.draw()
+  ctx.draw(false, () => {})
 }
 
 /**
@@ -494,7 +494,7 @@ function drawCanvasBackground() {
   const waveAreaWidth = w - waveAreaX
 
   drawGrid(ctx, w, waveAreaX, waveAreaY, waveAreaWidth, waveAreaHeight)
-  ctx.draw()
+  ctx.draw(false, () => {})
 }
 
 function drawGrid(
@@ -613,7 +613,7 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
 
 
 .progress-circle {
-  ::v-deep .sar-progress-circle__text {
+  :deep(.sar-progress-circle__text) {
     font-size: 18rpx;
     font-weight: bold;
   }
