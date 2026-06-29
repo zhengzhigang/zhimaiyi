@@ -100,7 +100,7 @@ const navigateToDetect = () => {
   display: flex;
   flex-direction: column;
   padding: 15rpx;
-  background-color: #148a86;
+  background-color: #21a1ae;
   box-sizing: border-box;
 }
 

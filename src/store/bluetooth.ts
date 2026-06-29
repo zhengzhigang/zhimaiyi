@@ -265,16 +265,13 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
       // 构建上传请求体
       const userStore = useUserStore()
       const payload: UploadWaveData = {
-        uid: String(userStore.userInfo?.id || ''),
-        paraa: [],
-        parab: [],
-        parac: mapped,
-        user: {
-          sex: userStore.userInfo?.sex === 1 ? 1 : 0,
-        },
+        customerId: String(userStore.userInfo?.id || ''),
+        adminUserId: 49,
+        DATA: [],
+        PARB: [],
+        PARC: mapped,
+        testType: detectType.value === 'quick' ? 1 : 2,
       }
-
-      console.log('================', JSON.stringify(mapped))
 
       const res = await uploadWaveResult(payload)
       uni.hideLoading()

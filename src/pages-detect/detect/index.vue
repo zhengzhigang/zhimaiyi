@@ -77,7 +77,7 @@
 </template>
 
 <script lang="ts" setup name="Detect">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { useBluetoothStore } from '@/store/bluetooth'
 import { firstOrderFilter, isWaveValueValid } from '@/utils/bluetooth/algorithms'
@@ -135,12 +135,13 @@ const paramControls: ParamControl[] = [
   { key: 'xStep', label: 'x轴步长', min: 0.5, max: 2.5, step: 0.1, digits: 1 },
   { key: 'yStep', label: 'Y轴步长', min: 100, max: 1000, step: 50, digits: 0 },
   { key: 'filterAlpha', label: '一阶滤波强度', min: 0.05, max: 0.6, step: 0.01, digits: 2 },
-  { key: 'dcCompensationStep', label: '直补偿步长', min: 0.001, max: 0.08, step: 0.001, digits: 3 },
+  { key: 'dcCompensationStep', label: '垂直补偿步长', min: 0.001, max: 0.08, step: 0.001, digits: 3 },
   { key: 'verticalBaseOffset', label: '垂直补偿值', min: -800, max: 800, step: 20, digits: 0 },
 ]
 
 const isConnected = computed(() => bluetoothStore.isConnected)
 const progress = computed(() => bluetoothStore.collectProgress)
+const isDetecting = computed(() => bluetoothStore.isDetecting)
 
 const canvasStyle = computed(() => ({
   position: 'absolute',
@@ -149,6 +150,14 @@ const canvasStyle = computed(() => ({
   width: `${canvasWidth.value}px`,
   height: `${canvasHeight.value}px`,
 }))
+
+// 监听检测状态，检测完成后立即停止绘制波形
+watch(isDetecting, (newVal, oldVal) => {
+  // 当从检测中变为非检测中时，停止波形绘制
+  if (oldVal === true && newVal === false) {
+    stopDrawLoop()
+  }
+})
 
 let animationTimer: ReturnType<typeof setInterval> | null = null
 // ===== 数据处理状态 =====
@@ -173,7 +182,7 @@ let drawVirtualTime = 0 // 虚拟时间（秒），控制绘制进度
 let drawLastRealTime = 0 // 上次绘制真实时间戳
 
 const animationInterval = 16
-const maxDrawQueue = 850 // 队列上限：约 5 个心跳周期（72BPM × 4.2s × 200Hz ≈ 840 点）
+const maxDrawQueue = 600 // 队列上限：约 4.5 个心跳周期（减少半个波峰）
 let ctx: ReturnType<typeof uni.createCanvasContext> | null = null
 
 onLoad((options) => {
@@ -220,7 +229,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopDrawLoop()
-  bluetoothStore.stopCollect()
+  bluetoothStore.resetDetect()
 })
 
 function resetWaveState() {
@@ -308,17 +317,14 @@ async function doStartDetect() {
   await bluetoothStore.startDetect(mode.value)
 }
 
-function retryDetect() {
+async function retryDetect() {
   stopDrawLoop()
-  bluetoothStore.resetDetect()
-  resetWaveState()
-  // 清空画布，恢复初始背景
-  drawCanvasBackground()
-  startDetect()
+  await bluetoothStore.resetDetect()
+  uni.navigateBack()
 }
 
-function goHome() {
-  bluetoothStore.stopCollect()
+async function goHome() {
+  await bluetoothStore.resetDetect()
   uni.reLaunch({ url: '/pages/index/index' })
 }
 

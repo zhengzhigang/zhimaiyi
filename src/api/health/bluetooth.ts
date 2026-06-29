@@ -10,5 +10,5 @@ import { http } from '@/http/alova'
  * @returns 分析结果
  */
 export function uploadWaveResult(data: UploadWaveData) {
-  return http.Post<IResponse<getConsultationRes[]>>('/extapi/getwaveresultnew', data)
+  return http.Post<IResponse<getConsultationRes[]>>('/pc/pulseDiagnosisInfo/getHandlePulseDiagnosisInfoFeign', data)
 }

@@ -35,7 +35,7 @@ const goToGuide = (mode: 'quick' | 'full') => {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  background-color: #148a86;
+  background-color: #21a1ae;
 }
 
 .header {
@@ -43,7 +43,7 @@ const goToGuide = (mode: 'quick' | 'full') => {
 }
 
 .title {
-  font-size: 32rpx;
+  font-size: 28rpx;
   font-weight: bold;
   color: #ffffff;
 }
@@ -56,9 +56,9 @@ const goToGuide = (mode: 'quick' | 'full') => {
 }
 
 .detect-btn {
-  width: 180rpx;
-  height: 60rpx;
-  border-radius: 30rpx;
+  width: 170rpx;
+  height: 56rpx;
+  border-radius: 28rpx;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -79,7 +79,7 @@ const goToGuide = (mode: 'quick' | 'full') => {
 }
 
 .btn-text {
-  font-size: 26rpx;
+  font-size: 22rpx;
   font-weight: bold;
   color: #ffffff;
 }
