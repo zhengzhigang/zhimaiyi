@@ -37,60 +37,49 @@ export function removeDCAndDrift(
 }
 
 /**
- * 计算三次样条插值系数
- * @param x x坐标数组
+ * 计算三次样条插值系数（扁平数组优化版，避免创建大量小数组）
+ * @param x x坐标数组（等间距）
  * @param y y坐标数组
- * @returns 系数数组
+ * @returns { b, c, d, h } 各系数扁平数组
  */
-export function calcSplineCoeff(x: number[], y: number[]): number[][] {
+export function calcSplineCoeff(x: number[], y: number[]) {
   const n = x.length - 1
-  const h: number[] = []
-  const alpha: number[] = []
-  const l: number[] = []
-  const mu: number[] = []
-  const z: number[] = []
-  const a: number[] = [...y]
-  const b: number[] = []
-  const c: number[] = []
-  const d: number[] = []
+  const h = new Float64Array(n)
+  const alpha = new Float64Array(n)
+  const l = new Float64Array(n + 1)
+  const mu = new Float64Array(n + 1)
+  const z = new Float64Array(n + 1)
+  const b = new Float64Array(n)
+  const c = new Float64Array(n + 1)
+  const d = new Float64Array(n)
 
-  for (let i = 0; i < n; i++) {
-    h.push(x[i + 1] - x[i])
-  }
+  for (let i = 0; i < n; i++) h[i] = x[i + 1] - x[i]
+  for (let i = 1; i < n; i++)
+    alpha[i] = (3 / h[i]) * (y[i + 1] - y[i]) - (3 / h[i - 1]) * (y[i] - y[i - 1])
 
+  l[0] = 1
   for (let i = 1; i < n; i++) {
-    alpha.push((3 / h[i]) * (a[i + 1] - a[i]) - (3 / h[i - 1]) * (a[i] - a[i - 1]))
+    l[i] = 2 * (x[i + 1] - x[i - 1]) - h[i - 1] * mu[i - 1]
+    mu[i] = h[i] / l[i]
+    z[i] = (alpha[i] - h[i - 1] * z[i - 1]) / l[i]
   }
 
-  l.push(1)
-  mu.push(0)
-  z.push(0)
-
-  for (let i = 1; i < n; i++) {
-    l.push(2 * (x[i + 1] - x[i - 1]) - h[i - 1] * mu[i - 1])
-    mu.push(h[i] / l[i])
-    z.push((alpha[i - 1] - h[i - 1] * z[i - 1]) / l[i])
-  }
-
-  l.push(1)
-  z.push(0)
-  c.push(0)
+  l[n] = 1
+  z[n] = 0
+  c[n] = 0
 
   for (let j = n - 1; j >= 0; j--) {
     c[j] = z[j] - mu[j] * c[j + 1]
-    b[j] = (a[j + 1] - a[j]) / h[j] - (h[j] * (c[j + 1] + 2 * c[j])) / 3
+    b[j] = (y[j + 1] - y[j]) / h[j] - (h[j] * (c[j + 1] + 2 * c[j])) / 3
     d[j] = (c[j + 1] - c[j]) / (3 * h[j])
   }
 
-  const coeffs: number[][] = []
-  for (let i = 0; i < n; i++) {
-    coeffs.push([a[i], b[i], c[i], d[i], x[i], h[i]])
-  }
-  return coeffs
+  return { b, c, d, h }
 }
 
 /**
- * 三次样条重采样
+ * 三次样条重采样（优化版：直接计算索引 O(n) 复杂度）
+ * 适用于等间距采样点（x[i] = i / originHz）
  * @param originArr 原始数组
  * @param targetHz 目标采样率
  * @param originHz 原始采样率
@@ -101,37 +90,63 @@ export function cubicSplineResample(
   targetHz = 240,
   originHz = 200,
 ): number[] {
+  console.log('原始数据长度333:', originArr.length)
   const n = originArr.length
-  const x: number[] = []
+  if (n === 0) return []
+  if (n === 1) return [originArr[0]]
+
+  // 构建等间距 x 坐标（步长 = 1/originHz）
+  const step = 1 / originHz
+  const x: number[] = new Array(n)
   for (let i = 0; i < n; i++) {
-    x.push(i / originHz)
+    x[i] = i * step
   }
 
-  const coeffs = calcSplineCoeff(x, originArr)
-  const result: number[] = []
-  const totalTime = (n - 1) / originHz
-  const newTotalSamples = Math.floor(totalTime * targetHz)
-
-  for (let i = 0; i < newTotalSamples; i++) {
-    const t = i / targetHz
-    let idx = 0
-    for (let j = 0; j < coeffs.length; j++) {
-      if (t >= coeffs[j][4] && t < coeffs[j][4] + coeffs[j][5]) {
-        idx = j
-        break
-      }
-      if (j === coeffs.length - 1) {
-        idx = j
+  console.log('[cubicSplineResample] 开始计算系数...')
+  const coeffStart = Date.now()
+  const { b, c, d } = calcSplineCoeff(x, originArr)
+  console.log('[cubicSplineResample] 系数计算完成，耗时:', Date.now() - coeffStart, 'ms')
+  
+  // 检查系数是否有效
+  let invalidCoeffCount = 0
+  for (let i = 0; i < b.length; i++) {
+    if (!Number.isFinite(b[i]) || !Number.isFinite(c[i]) || !Number.isFinite(d[i])) {
+      invalidCoeffCount++
+      if (invalidCoeffCount <= 5) {
+        console.error(`[cubicSplineResample] 系数无效 idx=${i}: b=${b[i]}, c=${c[i]}, d=${d[i]}`)
       }
     }
-    const dx = t - coeffs[idx][4]
-    const val =
-      coeffs[idx][0] +
-      coeffs[idx][1] * dx +
-      coeffs[idx][2] * dx * dx +
-      coeffs[idx][3] * dx * dx * dx
-    result.push(val)
   }
+  if (invalidCoeffCount > 0) {
+    console.error(`[cubicSplineResample] 共有 ${invalidCoeffCount} 个无效系数`)
+  }
+  
+  const totalTime = (n - 1) / originHz
+  const newTotalSamples = Math.floor(totalTime * targetHz) + 1
+  const result = new Array(newTotalSamples)
+  console.log('[cubicSplineResample] 开始插值循环，newTotalSamples:', newTotalSamples)
+
+  // 等间距采样点可以直接计算索引，无需搜索
+  const loopStart = Date.now()
+  let nanCount = 0
+  for (let i = 0; i < newTotalSamples; i++) {
+    const t = i / targetHz
+    const idx = Math.min(Math.floor(t * originHz), n - 2)
+
+    const dx = t - x[idx]
+    const val = originArr[idx] + b[idx] * dx + c[idx] * dx * dx + d[idx] * dx * dx * dx
+
+    // 安全检查：防止 NaN
+    if (Number.isFinite(val)) {
+      result[i] = val
+    } else {
+      nanCount++
+      result[i] = Number.isFinite(originArr[idx]) ? originArr[idx] : 0
+    }
+  }
+  console.log('[cubicSplineResample] 插值循环完成，耗时:', Date.now() - loopStart, 'ms, NaN数量:', nanCount)
+  console.log('[cubicSplineResample] 插值后数据长度:', result.length)
+  console.log('[cubicSplineResample] 前5个值:', result.slice(0, 5))
   return result
 }
 
@@ -145,6 +160,62 @@ export function convertTo0_255(arr: number[]): number[] {
   const max = Math.max(...arr)
   const range = max - min || 1
   return arr.map((v) => Math.round(((v - min) / range) * 255))
+}
+
+/**
+ * 上传前数据预处理（与 btsentest抑制漂移200hz.html 的 convertTo0_255 逻辑一致）
+ * 处理流程：全局均值去直流偏置 → 三次样条插值(200Hz→240Hz) → 映射到0-255
+ * @param arr 原始波形数据
+ * @returns 处理后的 0-255 范围数据
+ */
+export function prepareWaveDataForUpload(arr: number[]): number[] {
+  console.log('[prepareWaveDataForUpload] 开始处理，原始数据长度:', arr.length)
+  if (!arr || arr.length === 0) {
+    console.warn('[prepareWaveDataForUpload] 输入数据为空')
+    return []
+  }
+
+  // 1. 全局均值去直流偏置
+  const sum = arr.reduce((acc, cur) => acc + cur, 0)
+  const dcBias = sum / arr.length
+  console.log('[prepareWaveDataForUpload] DC偏置:', dcBias)
+  const noBiasArr = arr.map((v) => v - dcBias)
+  console.log('[prepareWaveDataForUpload] 去偏置完成，前5个值:', noBiasArr.slice(0, 5))
+
+  // 2. 三次样条插值 200Hz → 240Hz
+  console.log('[prepareWaveDataForUpload] 开始三次样条插值...')
+  const startTime = Date.now()
+  const interpArr = cubicSplineResample(noBiasArr, 240, 200)
+  console.log('[prepareWaveDataForUpload] 插值完成，耗时:', Date.now() - startTime, 'ms')
+  console.log('[prepareWaveDataForUpload] 插值后数据长度:', interpArr.length)
+  console.log('[prepareWaveDataForUpload] 插值后前5个值:', interpArr.slice(0, 5))
+
+  // 检查是否有 NaN 或 Infinity
+  const hasInvalid = interpArr.some(v => !Number.isFinite(v))
+  if (hasInvalid) {
+    console.error('[prepareWaveDataForUpload] 插值结果包含无效值(NaN/Infinity)')
+  }
+
+  // 3. 映射到 0-255（使用 reduce 避免大数据量时 Math.min/max 栈溢出）
+  const min = interpArr.reduce((a, b) => Math.min(a, b), Infinity)
+  const max = interpArr.reduce((a, b) => Math.max(a, b), -Infinity)
+  console.log('[prepareWaveDataForUpload] 插值后范围: min=', min, 'max=', max)
+  
+  if (max === min) {
+    console.warn('[prepareWaveDataForUpload] max === min，返回全128')
+    return interpArr.map(() => 128)
+  }
+  
+  const result = interpArr.map((val) => {
+    const num = Math.round(((val - min) / (max - min)) * 255)
+    return Math.max(0, Math.min(255, num))
+  })
+  
+  console.log('[prepareWaveDataForUpload] 映射完成，最终数据长度:', result.length)
+  console.log('[prepareWaveDataForUpload] 最终前5个值:', result.slice(0, 5))
+  console.log('[prepareWaveDataForUpload] 最终后5个值:', result.slice(-5))
+  
+  return result
 }
 
 /**

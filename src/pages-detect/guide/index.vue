@@ -2,15 +2,15 @@
   <view>
     <view class="guide-page">
       <view class="image-container">
-        <image class="step-image" src="/static/images/detect/step1.png" mode="aspectFit" />
-        <image class="step-image" src="/static/images/detect/step2.png" mode="aspectFit" />
-        <image class="step-image" src="/static/images/detect/step3.png" mode="aspectFit" />
-        <image class="step-image" src="/static/images/detect/step4.png" mode="aspectFit" />
+        <image class="step-image" src="./images/guide-01.jpg" mode="aspectFill" />
+        <image class="step-image" src="./images/guide-02.jpg" mode="aspectFill" />
+        <image class="step-image" src="./images/guide-03.jpg" mode="aspectFill" />
+        <image class="step-image" src="./images/guide-04.jpg" mode="aspectFill" />
+        <image class="step-image" src="./images/guide-05.jpg" mode="aspectFill" />
       </view>
 
       <view class="tip-container">
-        <text class="tip-text">请按照提示将手指放置在传感器，</text>
-        <text class="tip-text">然后点击开始检测</text>
+        <text class="tip-text">请按照提示将手指放置在传感器，然后点击开始检测</text>
       </view>
 
       <view class="start-btn" :class="{ 'start-btn--loading': loading }" @click="startDetect">
@@ -23,7 +23,6 @@
 <script lang="ts" setup name="Guide">
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import LandscapePage from '@/components/layout/LandscapePage.vue'
 import { useBluetoothStore } from '@/store/bluetooth'
 import { 
   DEFAULT_FILTER_ALPHA, 
@@ -116,7 +115,7 @@ const navigateToDetect = () => {
 }
 
 .step-image {
-  width: 22%;
+  width: 16%;
   height: 100rpx;
   background-color: #ffffff;
 }
@@ -139,7 +138,7 @@ const navigateToDetect = () => {
   width: 200rpx;
   height: 48rpx;
   margin-bottom: 10rpx;
-  background-color: #9b59b6;
+  background-color: #6849fe;
   border-radius: 24rpx;
   display: flex;
   align-items: center;
@@ -147,7 +146,7 @@ const navigateToDetect = () => {
 }
 
 .start-btn:active {
-  background-color: #8e44ad;
+  background-color: #6849fe;
 }
 
 .start-btn--loading {

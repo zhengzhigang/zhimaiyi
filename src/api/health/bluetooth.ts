@@ -1,4 +1,7 @@
 import type { UploadWaveData } from '@/utils/bluetooth/types'
+import type { getLastConsultationRes, getLastDailyRes } from '../consultation/index.typings'
+import type { getConsultationRes, getPulseRes } from './index.typings'
+import type { IResponse } from '@/http/types'
 import { http } from '@/http/alova'
 
 /**
@@ -7,5 +10,5 @@ import { http } from '@/http/alova'
  * @returns 分析结果
  */
 export function uploadWaveResult(data: UploadWaveData) {
-  return http.Post('http://101.200.234.162:8199/extapi/getwaveresultnew', data)
+  return http.Post<IResponse<getConsultationRes[]>>('/extapi/getwaveresultnew', data)
 }

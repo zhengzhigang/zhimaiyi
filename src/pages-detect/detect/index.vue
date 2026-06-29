@@ -189,14 +189,12 @@ onMounted(() => {
   canvasWidth.value = screenW - uni.upx2px(140)
   canvasHeight.value = screenH - 110
   ctx = uni.createCanvasContext('waveformCanvas')
-  console.log('[DEBUG] onMounted, ctx:', ctx, 'canvas:', canvasWidth.value, 'x', canvasHeight.value)
 
   // 先绘制画布背景、网格、刻度，不等数据到达
   drawCanvasBackground()
 
   // 数据处理回调：蓝牙或 Mock 数据共用
   const handleRawData = (points: number[]) => {
-    console.log('[DEBUG] handleRawData 收到', points.length, '个点, 前3个:', points.slice(0, 3))
     let pushedCount = 0
     for (const point of points) {
       const processed = normalizeWaveValue(point)
@@ -205,7 +203,6 @@ onMounted(() => {
         pushedCount++
       }
     }
-    console.log('[DEBUG] 处理后 push 了', pushedCount, '个点, drawQueue 长度:', drawQueue.length)
     if (drawQueue.length > maxDrawQueue) {
       drawQueue = drawQueue.slice(drawQueue.length - maxDrawQueue)
     }
@@ -351,7 +348,6 @@ function stopDrawLoop() {
  */
 function drawIncremental() {
   if (!ctx) {
-    console.log('[DEBUG] drawIncremental: ctx 为空，跳过')
     return
   }
   const w = canvasWidth.value

@@ -1,7 +1,7 @@
 import type { DetectType, UploadWaveData } from '@/utils/bluetooth/types'
 import { CollectMode } from '@/utils/bluetooth/types'
 import { bluetoothManager } from '@/utils/bluetooth'
-import { cubicSplineResample, removeDCAndDrift, convertTo0_255 } from '@/utils/bluetooth/algorithms'
+import { prepareWaveDataForUpload } from '@/utils/bluetooth/algorithms'
 import { uploadWaveResult } from '@/api/health/bluetooth'
 import { useUserStore } from './user'
 import { defineStore } from 'pinia'
@@ -210,12 +210,13 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
         collectMode.value = CollectMode.MODE_STOP
         uni.showToast({ title: '检测完成', icon: 'success' })
 
-        // 快速检测和全面检测都上传数据
-        const uploadData = detectType.value === 'full' ? data : wavePoints.value
-        if (uploadData.length > 0) {
-          // 延迟 1.5s 让 toast 先显示完再弹出 loading
+        // 快速检测和全面检测都上传全部采集数据
+        console.log('原始数据原始数据:', JSON.stringify(data.slice(0, 100)))
+        if (data.length > 0) {
+          
+          // 延迟 1s 让 toast 先显示完再弹出 loading
           setTimeout(() => {
-            uploadFullWaveData(uploadData)
+            uploadFullWaveData(data)
           }, 1000)
         }
       },
@@ -256,17 +257,10 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
   async function uploadFullWaveData(data: number[]) {
     try {
       uni.showLoading({ title: '数据上传中...' })
-
-      // 1. 去直流偏置和基线漂移
-      const baselineQueue: number[] = []
-      const smoothBaseline = { value: 32768 }
-      const processed = data.map((v) => removeDCAndDrift(v, baselineQueue, smoothBaseline))
-
-      // 2. 三次样条插值 200Hz -> 240Hz
-      const resampled = cubicSplineResample(processed, 240, 200)
-
-      // 3. 映射到 0-255
-      const mapped = convertTo0_255(resampled)
+      console.log('原始数据长度111:', data.length)
+      // 与 HTML 文件一致的上传预处理：全局均值去直流 → 三次样条插值(200Hz→240Hz) → 映射0-255
+      const mapped = prepareWaveDataForUpload(data)
+      console.log('处理后数据长度:', mapped.length)
 
       // 构建上传请求体
       const userStore = useUserStore()
@@ -280,7 +274,9 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
         },
       }
 
-      const res = await uploadWaveResult(payload)
+      console.log('================', JSON.stringify(mapped))
+
+      // const res = await uploadWaveResult(payload)
       uni.hideLoading()
 
       // 跳转到检测结果页面
