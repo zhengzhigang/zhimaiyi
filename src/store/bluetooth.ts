@@ -276,7 +276,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
 
       console.log('================', JSON.stringify(mapped))
 
-      // const res = await uploadWaveResult(payload)
+      const res = await uploadWaveResult(payload)
       uni.hideLoading()
 
       // 跳转到检测结果页面
