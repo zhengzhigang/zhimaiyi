@@ -6,6 +6,7 @@ import { uploadWaveResult } from '@/api/health/bluetooth'
 import { useUserStore } from './user'
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+// import sss from './小程序2分钟数据.js'
 
 export const useBluetoothStore = defineStore('bluetooth', () => {
   // ========== 连接状态 ==========
@@ -165,6 +166,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
    * @param type - 检测类型
    */
   async function startDetect(type: DetectType): Promise<boolean> {
+    // uploadFullWaveData(sss)
     updateDetectState()
     if (isDetecting.value) {
       uni.showToast({ title: '检测正在进行中', icon: 'none' })
@@ -265,7 +267,8 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
       // 构建上传请求体
       const userStore = useUserStore()
       const payload: UploadWaveData = {
-        customerId: 1185,
+        // customerId: userStore.userInfo?.customerId || 0,
+        customerId: 506,
         adminUserId: 49,
         DATA: [],
         PARB: [],
@@ -275,10 +278,12 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
 
       const res = await uploadWaveResult(payload)
       uni.hideLoading()
+      if (res.code === 1) {
+      uni.redirectTo({ url: `/test-report/emotion-report?resultData=${res.data}` })
+      }
 
       // 跳转到检测结果页面
       const resultStr = encodeURIComponent(JSON.stringify(res))
-      // uni.redirectTo({ url: `/pages-detect/result/index?data=${resultStr}` })
       return res
     } catch (err) {
       uni.hideLoading()

@@ -3,12 +3,12 @@ import type { getLastConsultationRes, getLastDailyRes } from '../consultation/in
 import type { getConsultationRes, getPulseRes } from './index.typings'
 import type { IResponse } from '@/http/types'
 import { http } from '@/http/alova'
+const uploadDomain = import.meta.env.VITE_SERVER_BASEURL_PC
 
-/**
- * 上传波形数据获取分析结果
- * @param data 波形数据
- * @returns 分析结果
- */
 export function uploadWaveResult(data: UploadWaveData) {
-  return http.Post<IResponse<getConsultationRes[]>>('/pc/pulseDiagnosisInfo/getHandlePulseDiagnosisInfoFeign', data)
+  return http.Post<IResponse<getConsultationRes[]>>('/pulseDiagnosisInfo/getHandlePulseDiagnosisInfoFeign', data, {
+    meta: {
+      domain: uploadDomain,
+    },
+  })
 }

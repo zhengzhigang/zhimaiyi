@@ -83,9 +83,6 @@ import { useBluetoothStore } from '@/store/bluetooth'
 import { firstOrderFilter, isWaveValueValid } from '@/utils/bluetooth/algorithms'
 import { CHARACTERISTIC_UUID } from '@/utils/bluetooth/constants'
 
-// ===== 开发模式：设为 true 使用 mock 数据，无需蓝牙设备 =====
-const MOCK_MODE = false
-
 interface Point {
   x: number
   y: number
@@ -287,12 +284,7 @@ function formatParamValue(key: WaveParamKey) {
 }
 
 async function startDetect() {
-  if (MOCK_MODE) {
-    // Mock 模式：无需蓝牙连接，直接开始检测
-    doStartDetect()
-    return
-  }
-
+  doStartDetect()
   if (!isConnected.value) {
     uni.showModal({
       title: '提示',
