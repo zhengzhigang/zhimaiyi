@@ -92,7 +92,7 @@ export interface ProtocolFrame {
  * 上传数据格式
  */
 export interface UploadWaveData {
-  customerId: string
+  customerId: number
   adminUserId: number
   DATA: number[]
   PARB: number[]

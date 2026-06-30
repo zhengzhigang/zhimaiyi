@@ -265,7 +265,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
       // 构建上传请求体
       const userStore = useUserStore()
       const payload: UploadWaveData = {
-        customerId: String(userStore.userInfo?.id || ''),
+        customerId: 1185,
         adminUserId: 49,
         DATA: [],
         PARB: [],
