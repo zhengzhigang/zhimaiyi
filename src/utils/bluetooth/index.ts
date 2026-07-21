@@ -7,6 +7,7 @@ import {
   buildHeartBeatFrame,
   buildPowerOffFrame,
   buildRawLightCollectFrame,
+  buildSpo2CollectFrame,
   buildStopFrame,
   dataParser,
 } from './protocol'
@@ -78,6 +79,11 @@ class BluetoothManager {
   private onError: OnErrorCallback | null = null
   private onConnectionChange: OnConnectionChangeCallback | null = null
 
+  // ========== 连接状态监听 ==========
+  private connectionStateHandler: ((res: any) => void) | null = null
+  /** 特征值变化监听器 */
+  private characteristicChangeHandler: ((res: any) => void) | null = null
+
   // ========== 采样统计 ==========
   /** 累计采样点数 */
   private sampleCount = 0
@@ -145,10 +151,123 @@ class BluetoothManager {
 
   // ========== 蓝牙初始化与连接 ==========
   /**
+   * 请求位置权限（安卓蓝牙必需）
+   * 安卓系统要求蓝牙扫描必须有位置权限
+   */
+  private async requestLocationPermission(): Promise<boolean> {
+    // #ifdef MP-WEIXIN
+    return new Promise((resolve) => {
+      uni.getSetting({
+        success: (settingRes) => {
+          if (settingRes.authSetting['scope.userLocation'] === true) {
+            // 已有权限，验证系统定位是否开启
+            uni.getLocation({
+              type: 'gcj02',
+              success: () => resolve(true),
+              fail: () => {
+                this.showLocationPermissionGuide(resolve)
+              },
+            })
+          } else {
+            // 未授权或已拒绝，调用 getLocation 触发权限弹窗
+            uni.getLocation({
+              type: 'gcj02',
+              success: () => resolve(true),
+              fail: () => {
+                this.showLocationPermissionGuide(resolve)
+              },
+            })
+          }
+        },
+        fail: () => resolve(false),
+      })
+    })
+    // #endif
+
+    // #ifndef MP-WEIXIN
+    return true
+    // #endif
+  }
+
+  /**
+   * 显示位置权限引导弹窗
+   */
+  private showLocationPermissionGuide(resolve: (value: boolean) => void) {
+    uni.showModal({
+      title: '权限提示',
+      content: '蓝牙扫描需要位置权限，请在设置中开启',
+      confirmText: '去设置',
+      success: (res) => {
+        if (res.confirm) {
+          uni.openSetting({
+            success: (settingRes) => {
+              resolve(settingRes.authSetting['scope.userLocation'] === true)
+            },
+            fail: () => resolve(false),
+          })
+        } else {
+          resolve(false)
+        }
+      },
+    })
+  }
+
+  /**
+   * 检查并引导开启系统定位服务（安卓蓝牙扫描需要）
+   */
+  private async ensureLocationServiceEnabled(): Promise<boolean> {
+    return new Promise((resolve) => {
+      uni.getSystemInfo({
+        success: (sysInfo) => {
+          if (sysInfo.locationEnabled) {
+            resolve(true)
+          } else {
+            uni.showModal({
+              title: '定位服务未开启',
+              content: '蓝牙扫描需要开启定位服务，请在系统设置中开启',
+              confirmText: '去设置',
+              success: (res) => {
+                if (res.confirm) {
+                  uni.openLocation({
+                    fail: () => {
+                      uni.showToast({
+                        title: '请手动开启定位服务',
+                        icon: 'none',
+                      })
+                    },
+                  })
+                }
+                resolve(false)
+              },
+            })
+          }
+        },
+        fail: () => resolve(false),
+      })
+    })
+  }
+
+  /**
    * 初始化蓝牙适配器
-   * 已打开时不视为错误，直接返回 true
+   * 安卓系统需要先获取位置权限并开启定位服务才能打开蓝牙适配器
    */
   public async initBluetooth(): Promise<boolean> {
+    // #ifdef MP-WEIXIN
+    // 安卓系统需要先获取位置权限
+    const hasPermission = await this.requestLocationPermission()
+    if (!hasPermission) {
+      this.onError?.('请授予位置权限以使用蓝牙功能')
+      return false
+    }
+
+    // 检查定位服务是否开启（安卓必须开启GPS才能扫描蓝牙）
+    const locationEnabled = await this.ensureLocationServiceEnabled()
+    if (!locationEnabled) {
+      this.onError?.('请开启定位服务以使用蓝牙功能')
+      return false
+    }
+    // #endif
+
     return new Promise((resolve) => {
       uni.openBluetoothAdapter({
         success: () => resolve(true),
@@ -159,7 +278,7 @@ class BluetoothManager {
             return
           }
           console.error('初始化蓝牙失败', err)
-          this.onError?.('初始化蓝牙失败，请检查蓝牙权限')
+          this.onError?.('初始化蓝牙失败，请检查蓝牙和定位权限')
           resolve(false)
         },
       })
@@ -168,9 +287,24 @@ class BluetoothManager {
 
   /**
    * 扫描蓝牙设备（5秒超时）
+   * 安卓系统需要先获取位置权限并开启定位服务
    * @returns 扫描到的设备列表
    */
   public async startScan(): Promise<BLEDeviceInfo[]> {
+    // 安卓系统需要位置权限和定位服务才能扫描蓝牙设备
+    const hasPermission = await this.requestLocationPermission()
+    if (!hasPermission) {
+      this.onError?.('需要位置权限才能扫描蓝牙设备')
+      return []
+    }
+
+    // 检查定位服务是否开启
+    const locationEnabled = await this.ensureLocationServiceEnabled()
+    if (!locationEnabled) {
+      this.onError?.('需要开启定位服务才能扫描蓝牙设备')
+      return []
+    }
+
     return new Promise((resolve) => {
       const devices: BLEDeviceInfo[] = []
       const deviceIdSet = new Set<string>()
@@ -206,11 +340,10 @@ class BluetoothManager {
       }
       uni.onBluetoothDeviceFound(onDeviceFound)
 
-      // 扫描参数：不指定 services 表示全设备扫描
-      // 如果需要特定服务，可以添加如: services: ['0000FFE0-0000-1000-8000-00805F9B34FB']
+      // 扫描参数：指定 services UUID 过滤，只扫描目标设备
       uni.startBluetoothDevicesDiscovery({
         allowDuplicatesKey: false,
-        // 不指定 services，进行全设备扫描
+        services: [SERVICE_UUID],
         success: () => {
           console.log('开始扫描蓝牙设备')
         },
@@ -220,7 +353,7 @@ class BluetoothManager {
             uni.offBluetoothDeviceFound()
           }
           console.error('搜索设备失败', err)
-          this.onError?.('搜索设备失败')
+          this.onError?.('搜索设备失败，请检查位置权限和GPS是否开启')
           resolve([])
         },
       })
@@ -236,6 +369,7 @@ class BluetoothManager {
       uni.createBLEConnection({
         deviceId,
         success: () => {
+          console.log('连接设备成功', deviceId, deviceName)
           // 延迟 1s 等待设备稳定后再发现服务
           setTimeout(() => {
             this.discoverServices(deviceId, deviceName).then(resolve)
@@ -330,6 +464,94 @@ class BluetoothManager {
   }
 
   /**
+   * 注册连接状态变化监听
+   * 监听设备被动断开（如关机、超出范围等）
+   */
+  private registerConnectionStateListener() {
+    this.unregisterConnectionStateListener()
+
+    this.connectionStateHandler = (res: any) => {
+      console.log('蓝牙连接状态变化:', res)
+      if (!res.connected && this.isConnected) {
+        this.handlePassiveDisconnect()
+      }
+    }
+
+    if (typeof uni.onBLEConnectionStateChange === 'function') {
+      uni.onBLEConnectionStateChange(this.connectionStateHandler)
+    }
+  }
+
+  /**
+   * 移除连接状态变化监听
+   */
+  private unregisterConnectionStateListener() {
+    if (this.connectionStateHandler && typeof uni.offBLEConnectionStateChange === 'function') {
+      try {
+        ;(uni.offBLEConnectionStateChange as any)(this.connectionStateHandler)
+      } catch {
+        try {
+          ;(uni.offBLEConnectionStateChange as any)()
+        } catch {
+          // ignore
+        }
+      }
+      this.connectionStateHandler = null
+    }
+  }
+
+  /**
+   * 移除特征值变化监听
+   */
+  private unregisterCharacteristicChangeListener() {
+    if (this.characteristicChangeHandler && typeof uni.offBLECharacteristicValueChange === 'function') {
+      try {
+        ;(uni.offBLECharacteristicValueChange as any)(this.characteristicChangeHandler)
+      } catch {
+        try {
+          ;(uni.offBLECharacteristicValueChange as any)()
+        } catch {
+          // ignore
+        }
+      }
+      this.characteristicChangeHandler = null
+    }
+  }
+
+  /**
+   * 处理设备被动断开
+   */
+  private handlePassiveDisconnect() {
+    console.log('设备被动断开，清理状态')
+    // 先标记为未连接，避免 stopDetect 尝试写入数据
+    this.isConnected = false
+    // 清理检测相关状态（不发送停止帧，因为设备已断开）
+    if (this.progressTimer) {
+      clearInterval(this.progressTimer)
+      this.progressTimer = null
+    }
+    if (this.detectTimer) {
+      clearTimeout(this.detectTimer)
+      this.detectTimer = null
+    }
+    if (this.isDetecting) {
+      this.isDetecting = false
+      this.collectMode = CollectMode.MODE_STOP
+      dataParser.setCollectingMode(false)
+      this.onDetectComplete?.([...this.fullWaveData])
+    }
+    this.stopHeartBeat()
+    this.unregisterConnectionStateListener()
+    this.unregisterCharacteristicChangeListener()
+    this.deviceId = ''
+    this.deviceName = ''
+    this.writeCharId = ''
+    this.readCharId = ''
+    this.onConnectionChange?.(false)
+    this.onError?.('设备连接已断开')
+  }
+
+  /**
    * 开启 BLE 通知，接收设备数据
    * 数据通过 onBLECharacteristicValueChange 回调
    */
@@ -338,6 +560,7 @@ class BluetoothManager {
     serviceId: string,
     characteristicId: string,
   ): Promise<boolean> {
+    let t = +new Date()
     return new Promise((resolve) => {
       uni.notifyBLECharacteristicValueChange({
         deviceId,
@@ -345,10 +568,17 @@ class BluetoothManager {
         characteristicId,
         state: true,
         success: () => {
-          // 监听特征值变化，接收设备数据
-          uni.onBLECharacteristicValueChange((res) => {
+          // 保存监听函数引用，方便后续移除
+          this.characteristicChangeHandler = (res: any) => {
+            const newT = +new Date()
+            console.log('开启通知成功', newT - t)
+            t = newT
             this.handleBLEData(res.value as unknown as ArrayBuffer)
-          })
+          }
+          // 监听特征值变化，接收设备数据
+          uni.onBLECharacteristicValueChange(this.characteristicChangeHandler)
+          // 注册连接状态监听，处理设备被动断开
+          this.registerConnectionStateListener()
           resolve(true)
         },
         fail: (err) => {
@@ -420,8 +650,9 @@ class BluetoothManager {
    * - 启动进度更新定时器（200ms 间隔）
    * - 设置超时自动停止
    * @param type - 检测类型（quick: 2分钟 / full: 3分钟）
+   * @param spo2Mode - 是否为血氧检测模式（发送 SPO2 采集指令）
    */
-  public async startDetect(type: DetectType): Promise<boolean> {
+  public async startDetect(type: DetectType, spo2Mode = false): Promise<boolean> {
     if (!this.isConnected) {
       this.onError?.('设备未连接')
       return false
@@ -434,17 +665,29 @@ class BluetoothManager {
     // 重置检测状态
     this.detectType = type
     this.isDetecting = true
-    this.collectMode = CollectMode.MODE_RAW_LIGHT
+    this.collectMode = spo2Mode ? CollectMode.MODE_SPO2 : CollectMode.MODE_RAW_LIGHT
     this.fullWaveData = []
     this.sampleCount = 0
     this.lastSampleTime = Date.now()
 
-    // 重置并启动数据解析器的波形采集模式
-    dataParser.reset()
-    dataParser.setCollectingMode(true)
+    // 清除旧的定时器，确保重新开始时是干净的
+    if (this.progressTimer) {
+      clearInterval(this.progressTimer)
+      this.progressTimer = null
+    }
+    if (this.detectTimer) {
+      clearTimeout(this.detectTimer)
+      this.detectTimer = null
+    }
 
-    // 发送采集指令
-    const ok = await this.writeData(buildRawLightCollectFrame())
+    // 重置数据解析器
+    dataParser.reset()
+    // 血氧模式不需要波形采集，只解析心率血氧帧
+    dataParser.setCollectingMode(!spo2Mode)
+
+    // 发送采集指令：血氧模式发送 SPO2 采集指令，否则发送原始波形采集指令
+    const collectFrame = spo2Mode ? buildSpo2CollectFrame() : buildRawLightCollectFrame()
+    const ok = await this.writeData(collectFrame)
     if (!ok) {
       this.isDetecting = false
       return false
@@ -508,10 +751,12 @@ class BluetoothManager {
   }
 
   // ========== 断开连接 ==========
-  /** 断开蓝牙连接：停止检测 → 停止心跳 → 关闭连接 → 关闭适配器 */
+  /** 断开蓝牙连接：停止检测 → 停止心跳 → 移除监听 → 关闭连接 → 关闭适配器 */
   public async disconnect(): Promise<void> {
     await this.stopDetect()
     this.stopHeartBeat()
+    this.unregisterConnectionStateListener()
+    this.unregisterCharacteristicChangeListener()
 
     // 关闭 BLE 连接
     if (this.deviceId) {
@@ -527,15 +772,33 @@ class BluetoothManager {
     this.isConnected = false
     this.deviceId = ''
     this.deviceName = ''
+    this.writeCharId = ''
+    this.readCharId = ''
     this.onConnectionChange?.(false)
   }
 
   // ========== 重置状态 ==========
   /** 重置检测状态（不清除连接） */
   public reset() {
-    this.stopDetect()
+    // 清除定时器
+    if (this.progressTimer) {
+      clearInterval(this.progressTimer)
+      this.progressTimer = null
+    }
+    if (this.detectTimer) {
+      clearTimeout(this.detectTimer)
+      this.detectTimer = null
+    }
+
+    // 重置检测状态
+    this.isDetecting = false
+    this.collectMode = CollectMode.MODE_STOP
     this.fullWaveData = []
     this.sampleCount = 0
+    this.lastSampleTime = 0
+
+    // 停止数据解析器的波形采集模式并重置
+    dataParser.setCollectingMode(false)
     dataParser.reset()
   }
 }

@@ -6,7 +6,6 @@ import { uploadWaveResult } from '@/api/health/bluetooth'
 import { useUserStore } from './user'
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-// import sss from './小程序2分钟数据.js'
 
 export const useBluetoothStore = defineStore('bluetooth', () => {
   // ========== 连接状态 ==========
@@ -100,10 +99,12 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
    */
   async function initAndConnect(targetDeviceName?: string): Promise<boolean> {
     const ok = await bluetoothManager.initBluetooth()
+    console.log('初始化蓝牙:', ok)
     if (!ok) return false
 
     // 扫描蓝牙设备
     const devices = await bluetoothManager.startScan()
+    console.log('扫描到的设备:', devices)
     // 按名称匹配目标设备，未指定则取第一个
     const target = targetDeviceName
       ? devices.find((d) => d.deviceId?.includes(targetDeviceName))
@@ -149,7 +150,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
   }
 
   // ========== 检测相关 ==========
-  /** 启动快速检测（2分钟） */
+  /** 启动快速检测（1分钟） */
   async function startQuickDetect(): Promise<boolean> {
     return startDetect('quick')
   }
@@ -161,12 +162,16 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
 
   /**
    * 启动检测流程
-   * - 快速检测：2分钟，仅显示实时波形
+   * - 快速检测：1分钟，仅显示实时波形
    * - 全面检测：3分钟，采集完整数据并自动上传分析
    * @param type - 检测类型
+   * @param spo2Mode - 是否为血氧检测模式（不上传数据）
    */
-  async function startDetect(type: DetectType): Promise<boolean> {
-    // uploadFullWaveData(sss)
+  async function startDetect(type: DetectType, spo2Mode = false): Promise<boolean> {
+    // 先重置进度和状态，确保重新开始时都是干净的
+    collectProgress.value = 0
+    remainingTime.value = type === 'full' ? 180 : 60
+
     updateDetectState()
     if (isDetecting.value) {
       uni.showToast({ title: '检测正在进行中', icon: 'none' })
@@ -179,11 +184,14 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     wavePoints.value = []
     filterPoints.value = []
     fullWaveData.value = []
-    collectProgress.value = 0
-    remainingTime.value = type === 'full' ? 180 : 120
 
     // 注册蓝牙数据回调
     bluetoothManager.setCallbacks({
+      /** 心率血氧数据回调 */
+      onHeartRateSpo2: (hr: number, sp: number) => {
+        heartRate.value = hr
+        spo2.value = sp
+      },
       /** 实时波形数据回调，限制最大显示点数防止绘制性能下降 */
       onWaveData: (points: number[]) => {
         // 立即回调页面处理数据（不依赖 setInterval 轮询）
@@ -204,22 +212,34 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
         collectProgress.value = progress
         remainingTime.value = remaining
       },
-      /** 检测完成回调，自动上传数据 */
+      /** 检测完成回调 */
       onDetectComplete: (data: number[]) => {
         fullWaveData.value = data
         isDetecting.value = false
         isCollectingFullWave.value = false
         collectMode.value = CollectMode.MODE_STOP
+        collectProgress.value = 100
+        remainingTime.value = 0
+
+        // 血氧检测模式不上传数据
+        if (spo2Mode) {
+          uni.showToast({ title: '检测完成', icon: 'success' })
+          return
+        }
+
         uni.showToast({ title: '检测完成', icon: 'success' })
 
         // 快速检测和全面检测都上传全部采集数据
-        console.log('原始数据原始数据:', JSON.stringify(data.slice(0, 100)))
         if (data.length > 0) {
-          
           // 延迟 1s 让 toast 先显示完再弹出 loading
           setTimeout(() => {
-            uploadFullWaveData(data)
+            uploadFullWaveData(data).catch((err) => {
+              // 捕获未处理的异常，防止 Promise 拒绝
+              console.error('[onDetectComplete] 上传失败:', err)
+            })
           }, 1000)
+        } else {
+          console.warn('[onDetectComplete] 采集数据为空，跳过上传')
         }
       },
       /** 错误回调 */
@@ -235,7 +255,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
       },
     })
 
-    const ok = await bluetoothManager.startDetect(type)
+    const ok = await bluetoothManager.startDetect(type, spo2Mode)
     updateDetectState()
     return ok
   }
@@ -259,10 +279,8 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
   async function uploadFullWaveData(data: number[]) {
     try {
       uni.showLoading({ title: '数据上传中...' })
-      console.log('原始数据长度111:', data.length)
       // 与 HTML 文件一致的上传预处理：全局均值去直流 → 三次样条插值(200Hz→240Hz) → 映射0-255
       const mapped = prepareWaveDataForUpload(data)
-      console.log('处理后数据长度:', mapped.length)
 
       // 构建上传请求体
       const userStore = useUserStore()
@@ -279,11 +297,8 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
       const res = await uploadWaveResult(payload)
       uni.hideLoading()
       if (res.code === 1) {
-      uni.redirectTo({ url: `/test-report/emotion-report?resultData=${res.data}` })
+        uni.redirectTo({ url: `/pages-health/test-report/index?pulseId=${res.data}` })
       }
-
-      // 跳转到检测结果页面
-      const resultStr = encodeURIComponent(JSON.stringify(res))
       return res
     } catch (err) {
       uni.hideLoading()

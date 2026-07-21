@@ -55,7 +55,7 @@
                 activeColor="#27e0b8"
                 backgroundColor="#e0e0e0"
                 block-color="#ffffff"
-                block-size="18"
+                :block-size="18"
                 @changing="onParamSliderChange($event, item.key)"
                 @change="onParamSliderChange($event, item.key)"
               />
@@ -77,11 +77,11 @@
 </template>
 
 <script lang="ts" setup name="Detect">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { computed, reactive, ref, watch } from 'vue'
+import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import { useBluetoothStore } from '@/store/bluetooth'
 import { firstOrderFilter, isWaveValueValid } from '@/utils/bluetooth/algorithms'
-import { CHARACTERISTIC_UUID } from '@/utils/bluetooth/constants'
+
 
 interface Point {
   x: number
@@ -150,9 +150,17 @@ const canvasStyle = computed(() => ({
 
 // 监听检测状态，检测完成后立即停止绘制波形
 watch(isDetecting, (newVal, oldVal) => {
-  // 当从检测中变为非检测中时，停止波形绘制
+    // 当从检测中变为非检测中时，停止波形绘制
   if (oldVal === true && newVal === false) {
     stopDrawLoop()
+  }
+})
+
+// 监听连接状态变化，断开时停止检测和绘制
+watch(isConnected, (newVal, oldVal) => {
+  if (oldVal === true && newVal === false) {
+    stopDrawLoop()
+    uni.showToast({ title: '设备连接已断开', icon: 'none' })
   }
 })
 
@@ -182,13 +190,49 @@ const animationInterval = 16
 const maxDrawQueue = 600 // 队列上限：约 4.5 个心跳周期（减少半个波峰）
 let ctx: ReturnType<typeof uni.createCanvasContext> | null = null
 
+let isFirstLoad = true
+
 onLoad((options) => {
   if (options?.mode) {
     mode.value = options.mode === 'full' ? 'full' : 'quick'
   }
+  isFirstLoad = true
+  initCanvas()
+  resetWaveState()
+  resetDrawState()
+  startDetect()
 })
 
-onMounted(() => {
+onShow(() => {
+  if (isFirstLoad) {
+    isFirstLoad = false
+    return
+  }
+  // 页面从缓存恢复时重新初始化 canvas（保留绘制状态）
+  initCanvas()
+  // 更新时间戳，避免时间差计算导致绘制异常
+  drawLastRealTime = Date.now()
+  // 如果有数据，重新启动绘制循环
+  if (drawQueue.length > 0 || cyclePoints.length > 0) {
+    startDrawLoop()
+  }
+  // 如果蓝牙已连接且未在检测中，重新启动检测
+  if (isConnected.value && !bluetoothStore.isDetecting) {
+    startDetect()
+  }
+})
+
+onHide(() => {
+  stopDrawLoop()
+})
+
+onUnload(() => {
+  stopDrawLoop()
+  bluetoothStore.resetDetect()
+  isFirstLoad = true
+})
+
+function initCanvas() {
   const sysInfo = uni.getSystemInfoSync()
   const screenW = Math.max(sysInfo.windowWidth, sysInfo.windowHeight)
   const screenH = Math.min(sysInfo.windowWidth, sysInfo.windowHeight)
@@ -219,15 +263,7 @@ onMounted(() => {
 
   // 蓝牙模式：注册原始数据回调，数据到达时立即处理
   bluetoothStore.onRawData(handleRawData)
-
-  resetWaveState()
-  startDetect()
-})
-
-onUnmounted(() => {
-  stopDrawLoop()
-  bluetoothStore.resetDetect()
-})
+}
 
 function resetWaveState() {
   baselineQueue = []
@@ -239,6 +275,11 @@ function resetWaveState() {
   drawQueue = []
   currentX = 30
   cyclePoints = []
+}
+
+function resetDrawState() {
+  drawLastRealTime = 0
+  drawVirtualTime = 0
 }
 
 function syncDraftParams(source: WaveParams) {
@@ -291,7 +332,7 @@ async function startDetect() {
       content: '蓝牙设备未连接，是否尝试连接？',
       success: (res) => {
         if (res.confirm) {
-          bluetoothStore.initAndConnect(CHARACTERISTIC_UUID).then(() => {
+          bluetoothStore.initAndConnect().then(() => {
             if (isConnected.value) {
               doStartDetect()
             }
@@ -306,7 +347,22 @@ async function startDetect() {
 
 async function doStartDetect() {
   resetWaveState()
-  await bluetoothStore.startDetect(mode.value)
+  const ok = await bluetoothStore.startDetect(mode.value)
+  if (!ok && !isConnected.value) {
+    uni.showModal({
+      title: '提示',
+      content: '设备连接已断开，是否重新连接？',
+      success: (res) => {
+        if (res.confirm) {
+          bluetoothStore.initAndConnect().then(() => {
+            if (isConnected.value) {
+              doStartDetect()
+            }
+          })
+        }
+      },
+    })
+  }
 }
 
 async function retryDetect() {

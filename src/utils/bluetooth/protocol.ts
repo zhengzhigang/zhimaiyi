@@ -219,6 +219,7 @@ export class DataParser {
     }
 
     if (validValues.length > 0) {
+      console.log('收到数据:', validValues.length)
       this.onParse?.({ waveValues: validValues })
     }
   }

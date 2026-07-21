@@ -11,6 +11,7 @@
 
       <view class="tip-container">
         <text class="tip-text">请按照提示将手指放置在传感器，然后点击开始检测</text>
+        <text class="tip-text" style="font-size: 14rpx;">为保证顺利检测，请设置手机息屏时间不低于3分钟</text>
       </view>
 
       <view class="start-btn" :class="{ 'start-btn--loading': loading }" @click="startDetect">
@@ -21,14 +22,13 @@
 </template>
 
 <script lang="ts" setup name="Guide">
-import { ref } from 'vue'
-import { onLoad } from '@dcloudio/uni-app'
+import { ref, watch } from 'vue'
+import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import { useBluetoothStore } from '@/store/bluetooth'
-import { 
-  DEFAULT_FILTER_ALPHA, 
+import {
+  DEFAULT_FILTER_ALPHA,
   DEFAULT_VERTICAL_BASE_OFFSET,
   SERVICE_UUID,
-  CHARACTERISTIC_UUID
 } from '@/utils/bluetooth/constants'
 
 const bluetoothStore = useBluetoothStore()
@@ -41,19 +41,35 @@ onLoad((options) => {
   }
 })
 
+onShow(() => {
+  updateConnectionState()
+})
+
+onUnload(() => {
+  loading.value = false
+})
+
+function updateConnectionState() {
+  // 页面显示时主动同步一次连接状态，防止状态残留
+  // 注意：这里只能同步 store 中的状态，真正的连接状态由 bluetoothManager 监听保证
+}
+
+// 监听连接状态变化，断开时自动停止 loading
+watch(
+  () => bluetoothStore.isConnected,
+  (connected) => {
+    if (!connected && loading.value) {
+      loading.value = false
+    }
+  },
+)
+
 const goBack = () => {
   uni.navigateBack()
 }
 
 const startDetect = () => {
   if (loading.value) return
-  // if (!bluetoothStore.isConnected) {
-  //   uni.showToast({
-  //     title: '请正确连接检测设备后检测！',
-  //     icon: 'none',
-  //   })
-  //   return
-  // }
 
   if (!bluetoothStore.isConnected) {
     tryConnect()
@@ -65,17 +81,14 @@ const startDetect = () => {
 
 const tryConnect = () => {
   loading.value = true
-  // 真机上需要使用设备名称匹配，不能用 MAC 地址
-  // 可选：传入设备名称关键字如 'Redmi'、'AirDots'、'PULSE' 等
-  // 传空则连接扫描到的第一个设备
-  bluetoothStore.initAndConnect(CHARACTERISTIC_UUID).then(() => {
+  bluetoothStore.initAndConnect().then(() => {
     loading.value = false
     if (bluetoothStore.isConnected) {
       navigateToDetect()
     } else {
       uni.showModal({
         title: '连接失败',
-        content: '蓝牙设备连接失败，是否重新尝试连接？',
+        content: '蓝牙设备连接失败，请检查蓝牙是否开启，是否重新尝试连接？',
         success: (res) => {
           if (res.confirm) {
             tryConnect()

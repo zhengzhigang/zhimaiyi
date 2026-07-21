@@ -90,7 +90,6 @@ export function cubicSplineResample(
   targetHz = 240,
   originHz = 200,
 ): number[] {
-  console.log('原始数据长度333:', originArr.length)
   const n = originArr.length
   if (n === 0) return []
   if (n === 1) return [originArr[0]]
@@ -102,10 +101,8 @@ export function cubicSplineResample(
     x[i] = i * step
   }
 
-  console.log('[cubicSplineResample] 开始计算系数...')
   const coeffStart = Date.now()
   const { b, c, d } = calcSplineCoeff(x, originArr)
-  console.log('[cubicSplineResample] 系数计算完成，耗时:', Date.now() - coeffStart, 'ms')
   
   // 检查系数是否有效
   let invalidCoeffCount = 0
@@ -124,7 +121,6 @@ export function cubicSplineResample(
   const totalTime = (n - 1) / originHz
   const newTotalSamples = Math.floor(totalTime * targetHz) + 1
   const result = new Array(newTotalSamples)
-  console.log('[cubicSplineResample] 开始插值循环，newTotalSamples:', newTotalSamples)
 
   // 等间距采样点可以直接计算索引，无需搜索
   const loopStart = Date.now()
@@ -144,9 +140,6 @@ export function cubicSplineResample(
       result[i] = Number.isFinite(originArr[idx]) ? originArr[idx] : 0
     }
   }
-  console.log('[cubicSplineResample] 插值循环完成，耗时:', Date.now() - loopStart, 'ms, NaN数量:', nanCount)
-  console.log('[cubicSplineResample] 插值后数据长度:', result.length)
-  console.log('[cubicSplineResample] 前5个值:', result.slice(0, 5))
   return result
 }
 
@@ -169,7 +162,6 @@ export function convertTo0_255(arr: number[]): number[] {
  * @returns 处理后的 0-255 范围数据
  */
 export function prepareWaveDataForUpload(arr: number[]): number[] {
-  console.log('[prepareWaveDataForUpload] 开始处理，原始数据长度:', arr.length)
   if (!arr || arr.length === 0) {
     console.warn('[prepareWaveDataForUpload] 输入数据为空')
     return []
@@ -178,17 +170,11 @@ export function prepareWaveDataForUpload(arr: number[]): number[] {
   // 1. 全局均值去直流偏置
   const sum = arr.reduce((acc, cur) => acc + cur, 0)
   const dcBias = sum / arr.length
-  console.log('[prepareWaveDataForUpload] DC偏置:', dcBias)
   const noBiasArr = arr.map((v) => v - dcBias)
-  console.log('[prepareWaveDataForUpload] 去偏置完成，前5个值:', noBiasArr.slice(0, 5))
 
   // 2. 三次样条插值 200Hz → 240Hz
-  console.log('[prepareWaveDataForUpload] 开始三次样条插值...')
   const startTime = Date.now()
   const interpArr = cubicSplineResample(noBiasArr, 240, 200)
-  console.log('[prepareWaveDataForUpload] 插值完成，耗时:', Date.now() - startTime, 'ms')
-  console.log('[prepareWaveDataForUpload] 插值后数据长度:', interpArr.length)
-  console.log('[prepareWaveDataForUpload] 插值后前5个值:', interpArr.slice(0, 5))
 
   // 检查是否有 NaN 或 Infinity
   const hasInvalid = interpArr.some(v => !Number.isFinite(v))
@@ -199,7 +185,6 @@ export function prepareWaveDataForUpload(arr: number[]): number[] {
   // 3. 映射到 0-255（使用 reduce 避免大数据量时 Math.min/max 栈溢出）
   const min = interpArr.reduce((a, b) => Math.min(a, b), Infinity)
   const max = interpArr.reduce((a, b) => Math.max(a, b), -Infinity)
-  console.log('[prepareWaveDataForUpload] 插值后范围: min=', min, 'max=', max)
   
   if (max === min) {
     console.warn('[prepareWaveDataForUpload] max === min，返回全128')
@@ -210,11 +195,7 @@ export function prepareWaveDataForUpload(arr: number[]): number[] {
     const num = Math.round(((val - min) / (max - min)) * 255)
     return Math.max(0, Math.min(255, num))
   })
-  
-  console.log('[prepareWaveDataForUpload] 映射完成，最终数据长度:', result.length)
-  console.log('[prepareWaveDataForUpload] 最终前5个值:', result.slice(0, 5))
-  console.log('[prepareWaveDataForUpload] 最终后5个值:', result.slice(-5))
-  
+
   return result
 }
 

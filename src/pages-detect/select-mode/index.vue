@@ -6,12 +6,14 @@
       </view>
 
       <view class="btn-container">
-        <view class="detect-btn quick-btn" @click="goToGuide('quick')">
-          <text class="btn-text">快速检测</text>
-        </view>
-
-        <view class="detect-btn full-btn" @click="goToGuide('full')">
-          <text class="btn-text">全面检测</text>
+        <view class="btn-container">
+          <view class="detect-btn quick-btn" @click="goToGuide('quick')">
+            <text class="btn-text">快速检测</text>
+          </view>
+  
+          <view class="detect-btn full-btn" @click="goToGuide('full')">
+            <text class="btn-text">全面检测</text>
+          </view>
         </view>
       </view>
     </view>
