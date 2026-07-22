@@ -82,7 +82,6 @@ import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
 import { useBluetoothStore } from '@/store/bluetooth'
 import { firstOrderFilter, isWaveValueValid } from '@/utils/bluetooth/algorithms'
 
-
 interface Point {
   x: number
   y: number
@@ -118,7 +117,7 @@ const paramPanelVisible = ref(false)
 const defaultParams: WaveParams = {
   amplitudeRatio: 0.6,
   xStep: 1,
-  yStep: 600,
+  yStep: 800,
   filterAlpha: 0.3,
   dcCompensationStep: 0.02,
   verticalBaseOffset: 0,
@@ -165,29 +164,36 @@ watch(isConnected, (newVal, oldVal) => {
 })
 
 let animationTimer: ReturnType<typeof setInterval> | null = null
+let mockDataIndex = 0
+let hasInitedDataHandler = false
 // ===== 数据处理状态 =====
-let baselineQueue: number[] = []
+// 环形缓冲实现基线窗口：400点=2秒，快速响应DC漂移，截止频率~0.16Hz远低于脉率
+const BASELINE_WINDOW = 400
+const baselineRing = new Float64Array(BASELINE_WINDOW)
+let baselineRingHead = 0 // 下一个写入位置
+let baselineRingCount = 0 // 当前有效元素数
+let baselineSum = 0
 let smoothBaseline = { value: 32768 }
 let lastRawVal: number | undefined
 let lastFilterVal = 0
+let lastFilterVal2 = 0
 let continueErrorCount = 0
 let isFirstDataPoint = true
-const baselineWindow = 120
 
-// ===== 绘制队列：蓝牙回调时立即处理数据并放入此队列，绘制循环从此队列取数 =====
-let drawQueue: number[] = []
+// ===== 绘制队列：蓝牙回调时放入原始数据，绘制循环中处理并取数 =====
+let rawDataQueue: number[] = []
+let queueReadIndex = 0
 
 // ===== 周期管理：一个周期 = 从左到右扫描一屏 =====
-let currentX = 30 // 当前绘制 X 坐标（waveAreaX，留出刻度标签空间）
-let cyclePoints: Point[] = [] // 当前周期已绘制的坐标点
+let currentX = 30
+let cyclePoints: Point[] = []
 
-// ===== 绘制速率控制：严格匹配 200Hz 数据率，保证一屏 ≈ 5 个心跳 =====
-const DRAW_RATE = 200 // 点/秒，与数据源一致
-let drawVirtualTime = 0 // 虚拟时间（秒），控制绘制进度
-let drawLastRealTime = 0 // 上次绘制真实时间戳
+// ===== 匀速绘制：基于实际时间差的浮点累积器，200点/秒 =====
+let drawAccumulator = 0
+let lastDrawTime = 0
 
-const animationInterval = 16
-const maxDrawQueue = 600 // 队列上限：约 4.5 个心跳周期（减少半个波峰）
+const animationInterval = 30
+const maxRawQueue = 1200
 let ctx: ReturnType<typeof uni.createCanvasContext> | null = null
 
 let isFirstLoad = true
@@ -210,10 +216,7 @@ onShow(() => {
   }
   // 页面从缓存恢复时重新初始化 canvas（保留绘制状态）
   initCanvas()
-  // 更新时间戳，避免时间差计算导致绘制异常
-  drawLastRealTime = Date.now()
-  // 如果有数据，重新启动绘制循环
-  if (drawQueue.length > 0 || cyclePoints.length > 0) {
+  if (rawDataQueue.length - queueReadIndex > 0 || cyclePoints.length > 0) {
     startDrawLoop()
   }
   // 如果蓝牙已连接且未在检测中，重新启动检测
@@ -230,6 +233,7 @@ onUnload(() => {
   stopDrawLoop()
   bluetoothStore.resetDetect()
   isFirstLoad = true
+  hasInitedDataHandler = false
 })
 
 function initCanvas() {
@@ -243,43 +247,52 @@ function initCanvas() {
   // 先绘制画布背景、网格、刻度，不等数据到达
   drawCanvasBackground()
 
-  // 数据处理回调：蓝牙或 Mock 数据共用
-  const handleRawData = (points: number[]) => {
-    let pushedCount = 0
-    for (const point of points) {
-      const processed = normalizeWaveValue(point)
-      if (processed !== null) {
-        drawQueue.push(processed)
-        pushedCount++
+  // 只在第一次初始化时注册数据回调和启动mock，避免重复注册
+  if (!hasInitedDataHandler) {
+    hasInitedDataHandler = true
+
+    // 数据回调：蓝牙或 Mock 数据共用，原始数据直接入队，处理在绘制循环中进行
+    const handleRawData = (points: number[]) => {
+      for (const point of points) {
+        rawDataQueue.push(point)
+      }
+      // 队列溢出时丢弃最旧数据，保留最新数据
+      if (rawDataQueue.length > maxRawQueue) {
+        const discardCount = rawDataQueue.length - maxRawQueue
+        rawDataQueue = rawDataQueue.slice(discardCount)
+        queueReadIndex = Math.max(0, queueReadIndex - discardCount)
+      }
+      if (rawDataQueue.length - queueReadIndex > 0) {
+        startDrawLoop()
       }
     }
-    if (drawQueue.length > maxDrawQueue) {
-      drawQueue = drawQueue.slice(drawQueue.length - maxDrawQueue)
-    }
-    if (drawQueue.length > 0) {
-      startDrawLoop()
-    }
-  }
 
-  // 蓝牙模式：注册原始数据回调，数据到达时立即处理
-  bluetoothStore.onRawData(handleRawData)
+    // 蓝牙模式：注册原始数据回调，数据到达时立即入队
+    bluetoothStore.onRawData(handleRawData)
+  }
 }
 
 function resetWaveState() {
-  baselineQueue = []
+  baselineRingHead = 0
+  baselineRingCount = 0
+  baselineSum = 0
   smoothBaseline = { value: 32768 }
   lastRawVal = undefined
   lastFilterVal = 0
+  lastFilterVal2 = 0
   continueErrorCount = 0
   isFirstDataPoint = true
-  drawQueue = []
+  rawDataQueue = []
+  queueReadIndex = 0
   currentX = 30
   cyclePoints = []
+  lastDrawTime = 0
+  drawAccumulator = 0
 }
 
 function resetDrawState() {
-  drawLastRealTime = 0
-  drawVirtualTime = 0
+  lastDrawTime = 0
+  drawAccumulator = 0
 }
 
 function syncDraftParams(source: WaveParams) {
@@ -378,12 +391,13 @@ async function goHome() {
 
 /**
  * 启动绘制循环：
- * - 蓝牙数据通过回调已放入 drawQueue，此处只负责从队列取数绘制
- * - 每帧取 2 个点，动态从左到右扫描
- * - 绘制到 canvas 最右侧时，立即从左侧开始新周期
+ * - 基于实际时间差（Date.now()）的浮点累积器，严格匀速 200点/秒
+ * - draw(true) 增量绘制：每帧只画新增线段，不累积命令，性能稳定
+ * - draw(false) 周期清屏：到达右边界时全量清屏+网格重绘
  */
 function startDrawLoop() {
-  stopDrawLoop()
+  if (animationTimer) return
+  lastDrawTime = Date.now()
   animationTimer = setInterval(() => {
     drawIncremental()
   }, animationInterval)
@@ -397,8 +411,14 @@ function stopDrawLoop() {
 }
 
 /**
- * 增量绘制：从 drawQueue 取点，一个周期 = 从左到右扫描一屏
- * - 贝塞尔曲线平滑渲染
+ * 增量数据消费 + 增量绘制：
+ *
+ * 核心设计：
+ * 1. 基于实际时间差（Date.now()）累积点数，严格 200点/秒，不受 setInterval 漂移影响
+ * 2. draw(true) 增量绘制：每帧只画新增线段，画布保留之前内容，命令不累积
+ * 3. draw(false) 周期清屏：到达右边界时全量清屏+网格重绘，重置命令缓冲区
+ * 4. lineTo 折线：x 严格单调递增，无贝塞尔过冲/回环
+ * 5. 每帧最多 8 点，防止突发消费造成卡顿
  */
 function drawIncremental() {
   if (!ctx) {
@@ -415,35 +435,64 @@ function drawIncremental() {
   const waveAreaWidth = w - waveAreaX
   const xStep = appliedParams.xStep
 
-  // 虚拟时钟：按 200Hz 速率匀速消耗队列，数据不够就等，保证一屏 ≈ 5 个心跳
+  // ===== 基于实际时间差的点累积（200点/秒 = 0.2点/ms）=====
   const now = Date.now()
-  if (drawLastRealTime === 0) drawLastRealTime = now
-  const elapsed = (now - drawLastRealTime) / 1000
-  drawLastRealTime = now
-  const pointsToDraw = Math.min(Math.floor(elapsed * DRAW_RATE), drawQueue.length)
-  if (pointsToDraw <= 0) return // 数据还没到，跳过本帧
-  for (let i = 0; i < pointsToDraw; i++) {
-    const value = drawQueue.shift()!
+  if (lastDrawTime === 0) lastDrawTime = now
+  const elapsed = Math.min(now - lastDrawTime, 100) // 上限100ms防突发
+  lastDrawTime = now
+  drawAccumulator += elapsed * 0.2
 
-    // 绘制到 canvas 最右侧 → 立即从左侧开始新周期
-    if (currentX >= waveAreaX + waveAreaWidth) {
-      cyclePoints = []
-      currentX = waveAreaX
-    }
-    
-    const y = valueToY(value, waveAreaY, waveAreaHeight)
+  let pointsToDraw = Math.floor(drawAccumulator)
+  drawAccumulator -= pointsToDraw
+  // 每帧最多 8 点，防止批量消费造成卡顿
+  pointsToDraw = Math.min(pointsToDraw, 8)
+  // 不超过可用数据量
+  const availablePoints = rawDataQueue.length - queueReadIndex
+  pointsToDraw = Math.min(pointsToDraw, availablePoints)
+
+  if (pointsToDraw === 0 && cyclePoints.length >= 2) return
+
+  // ===== 新周期：重置状态 =====
+  if (currentX >= waveAreaX + waveAreaWidth) {
+    cyclePoints = []
+    currentX = waveAreaX
+    drawAccumulator = 0
+    lastDrawTime = Date.now()
+  }
+
+  if (pointsToDraw === 0) return
+
+  // ===== 首屏或新周期：清屏并绘制网格和刻度 =====
+  if (cyclePoints.length === 0) {
+    ctx.clearRect(0, 0, w, h)
+    drawGrid(ctx, w, waveAreaX, waveAreaY, waveAreaWidth, waveAreaHeight)
+    ctx.draw(false, () => {})
+  }
+
+  // ===== 消费数据点，转换为坐标 =====
+  const startLen = cyclePoints.length
+  for (let i = 0; i < pointsToDraw; i++) {
+    if (queueReadIndex >= rawDataQueue.length) break
+    if (currentX >= waveAreaX + waveAreaWidth) break
+
+    const rawValue = rawDataQueue[queueReadIndex++]
+    const processed = normalizeWaveValue(rawValue)
+    const y = valueToY(processed, waveAreaY, waveAreaHeight)
     cyclePoints.push({ x: currentX, y })
     currentX += xStep
   }
 
-  // 全量绘制当前周期
-  drawGrid(ctx, w, waveAreaX, waveAreaY, waveAreaWidth, waveAreaHeight)
-
-  if (cyclePoints.length < 2) {
-    ctx.draw(false, () => {})
-    return
+  // 定期清理已读数据
+  if (queueReadIndex > 500) {
+    rawDataQueue = rawDataQueue.slice(queueReadIndex)
+    queueReadIndex = 0
   }
 
+  if (cyclePoints.length < 2) return
+
+  // ===== 增量绘制：只画新增线段 =====
+  // 从 startLen-1 开始画，保证与上一帧的连线不断开
+  const drawStart = Math.max(0, startLen - 1)
   ctx.setStrokeStyle('rgba(39, 224, 184, 0.95)')
   ctx.setLineWidth(2)
   ctx.setLineCap('round')
@@ -451,67 +500,111 @@ function drawIncremental() {
 
   // Catmull-Rom → 三次贝塞尔曲线
   ctx.beginPath()
-  ctx.moveTo(cyclePoints[0].x, cyclePoints[0].y)
-
-  for (let i = 0; i < cyclePoints.length - 1; i++) {
-    const p0 = cyclePoints[Math.max(0, i - 1)]
-    const p1 = cyclePoints[i]
-    const p2 = cyclePoints[i + 1]
-    const p3 = cyclePoints[Math.min(cyclePoints.length - 1, i + 2)]
-
-    const cp1x = p1.x + (p2.x - p0.x) / 6
-    const cp1y = p1.y + (p2.y - p0.y) / 6
-    const cp2x = p2.x - (p3.x - p1.x) / 6
-    const cp2y = p2.y - (p3.y - p1.y) / 6
-
-    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, p2.x, p2.y)
+  ctx.moveTo(cyclePoints[drawStart].x, cyclePoints[drawStart].y)
+  for (let i = drawStart + 1; i < cyclePoints.length; i++) {
+    ctx.lineTo(cyclePoints[i].x, cyclePoints[i].y)
   }
-
   ctx.stroke()
 
-  // 引导点
-  drawLeadingDot(ctx, cyclePoints[cyclePoints.length - 1])
-
-  ctx.draw(false, () => {})
+  // draw(true)：保留画布已有内容，只叠加新线段
+  ctx.draw(true, () => {})
 }
 
 /**
- * 数据处理流水线（与 btsentest抑制漂移200hz.html 一致）：
- *   ① 拼包解析 → ② 异常过滤 → ③ 一阶滤波 → ④ 去直流+抑漂移 → ⑤ 映射画布
- * 关键：先滤波再去直流，滤波后的平滑信号做基线追踪更稳定，不会因噪声抖动导致漂移
+ * 中点二次贝塞尔曲线全量绘制（用于onShow恢复/首次绘制）
+ * 算法：moveTo(p0) → lineTo(mid(p0,p1)) → 对每个中间点pi，
+ * quadraticCurveTo(pi, mid(pi,pi+1)) → 最后lineTo(pn)
+ * 曲线经过所有数据点，C1切线连续，无尖角
  */
-function normalizeWaveValue(value: number): number | null {
+function drawWavePath(ctx: UniApp.CanvasContext, points: Point[]) {
+  if (points.length < 2) return
+  ctx.setStrokeStyle('rgba(39, 224, 184, 0.95)')
+  ctx.setLineWidth(2)
+  ctx.setLineCap('round')
+  ctx.setLineJoin('round')
+
+  ctx.beginPath()
+  ctx.moveTo(points[0].x, points[0].y)
+
+  if (points.length === 2) {
+    ctx.lineTo(points[1].x, points[1].y)
+  } else {
+    const m0x = (points[0].x + points[1].x) / 2
+    const m0y = (points[0].y + points[1].y) / 2
+    ctx.lineTo(m0x, m0y)
+    for (let i = 1; i < points.length - 1; i++) {
+      const mx = (points[i].x + points[i + 1].x) / 2
+      const my = (points[i].y + points[i + 1].y) / 2
+      ctx.quadraticCurveTo(points[i].x, points[i].y, mx, my)
+    }
+    ctx.lineTo(points[points.length - 1].x, points[points.length - 1].y)
+  }
+
+  ctx.stroke()
+}
+
+/**
+ * 数据处理流水线：
+ *   ① 异常值处理 → ② 两级一阶IIR低通滤波 → ③ 去直流+慢漂移抑制
+ * 
+ * 关键设计：
+ * - 两级 IIR（alpha1=0.5, alpha2=0.3）：平滑但不失真，消除毛刺和转折
+ * - smoothBaseline 初始化为首个数据点，消除初始漂移
+ * - 基线窗口 400 点(2s) + dcStep=0.005：快速追踪DC漂移，截止频率~0.16Hz
+ */
+function normalizeWaveValue(value: number): number {
   let v = value
+
   if (!isWaveValueValid(v, lastRawVal)) {
     continueErrorCount++
-    if (continueErrorCount > 5) {
-      v = lastRawVal ?? 32768
+    if (lastRawVal !== undefined) {
+      v = lastRawVal
     } else {
-      return null
+      v = 40200
     }
   } else {
     continueErrorCount = 0
-    lastRawVal = v
   }
+  lastRawVal = v
 
-  // 首数据点：直接赋值，跳过滤波器收敛期，同时初始化基线到当前值避免 DC 漂移
   if (isFirstDataPoint) {
     lastFilterVal = v
+    lastFilterVal2 = v
     smoothBaseline.value = v
+    // 初始化环形缓冲
+    for (let i = 0; i < BASELINE_WINDOW; i++) {
+      baselineRing[i] = v
+    }
+    baselineRingHead = 0
+    baselineRingCount = BASELINE_WINDOW
+    baselineSum = v * BASELINE_WINDOW
     isFirstDataPoint = false
-  } else {
-    lastFilterVal = firstOrderFilter(v, lastFilterVal, appliedParams.filterAlpha)
+    return removeDCAndDriftWithStep(v)
   }
-  // 去直流+抑漂移：对滤波后的平滑信号做基线追踪
-  return removeDCAndDriftWithStep(lastFilterVal)
+
+  // 两级一阶IIR低通滤波：alpha1=0.5快速响应，alpha2=0.3深度平滑
+  const alpha1 = Math.min(appliedParams.filterAlpha + 0.2, 0.6)
+  const alpha2 = Math.max(appliedParams.filterAlpha - 0.05, 0.1)
+  lastFilterVal = lastFilterVal + alpha1 * (v - lastFilterVal)
+  lastFilterVal2 = lastFilterVal2 + alpha2 * (lastFilterVal - lastFilterVal2)
+
+  // 去直流+慢漂移抑制
+  return removeDCAndDriftWithStep(lastFilterVal2)
 }
 
 function removeDCAndDriftWithStep(value: number) {
-  baselineQueue.push(value)
-  if (baselineQueue.length > baselineWindow) {
-    baselineQueue.shift()
+  // 环形缓冲写入
+  if (baselineRingCount >= BASELINE_WINDOW) {
+    // 满了，减去即将被覆盖的旧值
+    baselineSum -= baselineRing[baselineRingHead]
+  } else {
+    baselineRingCount++
   }
-  const mean = baselineQueue.reduce((acc, cur) => acc + cur, 0) / baselineQueue.length
+  baselineRing[baselineRingHead] = value
+  baselineSum += value
+  baselineRingHead = (baselineRingHead + 1) % BASELINE_WINDOW
+
+  const mean = baselineSum / baselineRingCount
   smoothBaseline.value += appliedParams.dcCompensationStep * (mean - smoothBaseline.value)
   return value - smoothBaseline.value
 }
@@ -580,12 +673,7 @@ function drawGrid(
 
 function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
   ctx.beginPath()
-  ctx.arc(point.x, point.y, 6, 0, Math.PI * 2)
-  ctx.setFillStyle('rgba(39, 224, 184, 0.24)')
-  ctx.fill()
-
-  ctx.beginPath()
-  ctx.arc(point.x, point.y, 3.5, 0, Math.PI * 2)
+  ctx.arc(point.x, point.y, 2.5, 0, Math.PI * 2)
   ctx.setFillStyle('#27e0b8')
   ctx.fill()
 }

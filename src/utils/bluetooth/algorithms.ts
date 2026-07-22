@@ -2,7 +2,7 @@
  * 滤波与基线漂移算法
  */
 
-import { BASELINE_FILTER_ALPHA, BASELINE_WINDOW } from './constants'
+import { BASELINE_FILTER_ALPHA, BASELINE_WINDOW, MAX_JUMP_DELTA } from './constants'
 
 /**
  * 一阶滤波算法
@@ -207,6 +207,6 @@ export function prepareWaveDataForUpload(arr: number[]): number[] {
  */
 export function isWaveValueValid(val: number, lastVal?: number): boolean {
   if (val < 0 || val > 65535) return false
-  if (lastVal !== undefined && Math.abs(val - lastVal) > 8000) return false
+  if (lastVal !== undefined && Math.abs(val - lastVal) > MAX_JUMP_DELTA) return false
   return true
 }

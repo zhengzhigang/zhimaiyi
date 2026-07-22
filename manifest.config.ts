@@ -134,6 +134,12 @@ export default defineManifestConfig({
     // styleIsolation: 'shared',
     usingComponents: true,
     // __usePrivacyCheck__: true,
+    requiredPrivateInfos: ['getLocation'],
+    permission: {
+      'scope.userLocation': {
+        desc: '蓝牙扫描需要位置权限',
+      },
+    },
   },
   'mp-alipay': {
     usingComponents: true,

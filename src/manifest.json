@@ -99,7 +99,15 @@
     "optimization": {
       "subPackages": true
     },
-    "mergeVirtualHostAttributes": true
+    "mergeVirtualHostAttributes": true,
+    "requiredPrivateInfos": [
+      "getLocation"
+    ],
+    "permission": {
+      "scope.userLocation": {
+        "desc": "蓝牙扫描需要位置权限"
+      }
+    }
   },
   "mp-alipay": {
     "usingComponents": true,
