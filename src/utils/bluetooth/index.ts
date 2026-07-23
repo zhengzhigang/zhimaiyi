@@ -563,7 +563,6 @@ class BluetoothManager {
     serviceId: string,
     characteristicId: string,
   ): Promise<boolean> {
-    let t = +new Date()
     return new Promise((resolve) => {
       uni.notifyBLECharacteristicValueChange({
         deviceId,
@@ -573,9 +572,6 @@ class BluetoothManager {
         success: () => {
           // 保存监听函数引用，方便后续移除
           this.characteristicChangeHandler = (res: any) => {
-            const newT = +new Date()
-            console.log('开启通知成功', newT - t)
-            t = newT
             this.handleBLEData(res.value as unknown as ArrayBuffer)
           }
           // 监听特征值变化，接收设备数据
