@@ -47,7 +47,7 @@
 
 <script lang="ts" setup name="Spo2Detect">
 import { ref, computed, watch } from 'vue'
-import { onUnload } from '@dcloudio/uni-app'
+import { onUnload, onHide } from '@dcloudio/uni-app'
 import { useBluetoothStore } from '@/store/bluetooth'
 
 const bluetoothStore = useBluetoothStore()
@@ -67,6 +67,15 @@ const statusText = computed(() => {
   if (!isConnected.value) return '请连接设备后开始检测'
   return '准备就绪'
 })
+
+/**
+ * 页面离开时清理：静默停止检测，不弹"检测完成"toast
+ */
+function cleanupOnExit() {
+  if (isDetecting.value) {
+    bluetoothStore.silentStop()
+  }
+}
 
 // 监听心率血氧数据变化，更新显示
 watch(
@@ -117,11 +126,13 @@ const stopDetect = async () => {
   uni.showToast({ title: '检测已停止', icon: 'none' })
 }
 
-// 页面卸载时清理
+// 页面隐藏/卸载时清理
+onHide(() => {
+  cleanupOnExit()
+})
+
 onUnload(() => {
-  if (isDetecting.value) {
-    bluetoothStore.stopCollect()
-  }
+  cleanupOnExit()
 })
 </script>
 

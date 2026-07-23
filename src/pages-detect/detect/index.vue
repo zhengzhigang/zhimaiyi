@@ -78,9 +78,8 @@
 
 <script lang="ts" setup name="Detect">
 import { computed, reactive, ref, watch } from 'vue'
-import { onLoad, onShow, onHide, onUnload } from '@dcloudio/uni-app'
+import { onLoad, onShow, onHide, onUnload, onBackPress } from '@dcloudio/uni-app'
 import { useBluetoothStore } from '@/store/bluetooth'
-import { firstOrderFilter, isWaveValueValid } from '@/utils/bluetooth/algorithms'
 import { BASELINE_WINDOW } from '@/utils/bluetooth/constants'
 
 interface Point {
@@ -219,27 +218,47 @@ onShow(() => {
     isFirstLoad = false
     return
   }
-  // 页面从缓存恢复时重新初始化 canvas（保留绘制状态）
   initCanvas()
   if (rawDataQueue.length - queueReadIndex > 0 || cyclePoints.length > 0) {
     startDrawLoop()
   }
-  // 如果蓝牙已连接且未在检测中，重新启动检测
-  if (isConnected.value && !bluetoothStore.isDetecting) {
-    startDetect()
-  }
 })
 
-onHide(() => {
+/**
+ * 页面离开时的清理函数：
+ * - 立即停止绘制循环
+ * - 静默停止蓝牙检测（发停止帧给设备，不弹toast不上传）
+ * - 重置波形状态
+ */
+function cleanupOnExit() {
   stopDrawLoop()
+  resetWaveState()
+  bluetoothStore.silentStop()
+}
+
+onHide(() => {
+  cleanupOnExit()
 })
 
 onUnload(() => {
-  stopDrawLoop()
-  bluetoothStore.resetDetect()
+  cleanupOnExit()
   isFirstLoad = true
   hasInitedDataHandler = false
 })
+
+onBackPress(() => {
+  cleanupOnExit()
+  return false
+})
+
+watch(
+  () => bluetoothStore.isDetecting,
+  (detecting) => {
+    if (!detecting) {
+      stopDrawLoop()
+    }
+  },
+)
 
 function initCanvas() {
   const sysInfo = uni.getSystemInfoSync()
@@ -344,7 +363,6 @@ function formatParamValue(key: WaveParamKey) {
 }
 
 async function startDetect() {
-  doStartDetect()
   if (!isConnected.value) {
     uni.showModal({
       title: '提示',
@@ -384,14 +402,13 @@ async function doStartDetect() {
   }
 }
 
-async function retryDetect() {
-  stopDrawLoop()
-  await bluetoothStore.resetDetect()
+function retryDetect() {
+  cleanupOnExit()
   uni.navigateBack()
 }
 
-async function goHome() {
-  await bluetoothStore.resetDetect()
+function goHome() {
+  cleanupOnExit()
   uni.reLaunch({ url: '/pages/index/index' })
 }
 

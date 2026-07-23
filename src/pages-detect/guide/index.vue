@@ -25,11 +25,6 @@
 import { ref, watch } from 'vue'
 import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import { useBluetoothStore } from '@/store/bluetooth'
-import {
-  DEFAULT_FILTER_ALPHA,
-  DEFAULT_VERTICAL_BASE_OFFSET,
-  SERVICE_UUID,
-} from '@/utils/bluetooth/constants'
 
 const bluetoothStore = useBluetoothStore()
 const mode = ref<'quick' | 'full'>('quick')
@@ -42,17 +37,12 @@ onLoad((options) => {
 })
 
 onShow(() => {
-  updateConnectionState()
+  loading.value = false
 })
 
 onUnload(() => {
   loading.value = false
 })
-
-function updateConnectionState() {
-  // 页面显示时主动同步一次连接状态，防止状态残留
-  // 注意：这里只能同步 store 中的状态，真正的连接状态由 bluetoothManager 监听保证
-}
 
 // 监听连接状态变化，断开时自动停止 loading
 watch(
@@ -63,10 +53,6 @@ watch(
     }
   },
 )
-
-const goBack = () => {
-  uni.navigateBack()
-}
 
 const startDetect = () => {
   if (loading.value) return
@@ -81,9 +67,9 @@ const startDetect = () => {
 
 const tryConnect = () => {
   loading.value = true
-  bluetoothStore.initAndConnect().then(() => {
+  bluetoothStore.initAndConnect().then((connected) => {
     loading.value = false
-    if (bluetoothStore.isConnected) {
+    if (connected) {
       navigateToDetect()
     } else {
       uni.showModal({
@@ -96,6 +82,9 @@ const tryConnect = () => {
         },
       })
     }
+  }).catch(() => {
+    loading.value = false
+    uni.showToast({ title: '连接失败', icon: 'none' })
   })
 }
 

@@ -538,7 +538,10 @@ class BluetoothManager {
       this.isDetecting = false
       this.collectMode = CollectMode.MODE_STOP
       dataParser.setCollectingMode(false)
-      this.onDetectComplete?.([...this.fullWaveData])
+      dataParser.reset()
+      this.fullWaveData = []
+      this.sampleCount = 0
+      this.lastSampleTime = 0
     }
     this.stopHeartBeat()
     this.unregisterConnectionStateListener()
@@ -743,6 +746,59 @@ class BluetoothManager {
       // 触发完成回调，传递完整波形数据副本
       this.onDetectComplete?.([...this.fullWaveData])
     }
+
+    // 停止心跳保活
+    this.stopHeartBeat()
+
+    // 移除蓝牙数据监听
+    this.unregisterCharacteristicChangeListener()
+
+    // 关闭 BLE 通知
+    if (this.deviceId && this.readCharId) {
+      uni.notifyBLECharacteristicValueChange({
+        deviceId: this.deviceId,
+        serviceId: SERVICE_UUID,
+        characteristicId: this.readCharId,
+        state: false,
+        fail: () => { /* ignore */ }
+      })
+    }
+  }
+
+  /**
+   * 静默停止检测（用户主动离开页面时使用）
+   * - 发送停止帧给设备
+   * - 清除定时器、重置状态
+   * - 不触发 onDetectComplete 回调（不弹"检测完成"toast，不上传数据）
+   * - 不断开蓝牙连接，保持心跳保活
+   */
+  public async silentStop(): Promise<void> {
+    if (this.progressTimer) {
+      clearInterval(this.progressTimer)
+      this.progressTimer = null
+    }
+    if (this.detectTimer) {
+      clearTimeout(this.detectTimer)
+      this.detectTimer = null
+    }
+
+    if (this.isDetecting) {
+      if (this.isConnected) {
+        try {
+          await this.writeData(buildStopFrame())
+        } catch {
+          // ignore write errors during silent stop
+        }
+      }
+      this.isDetecting = false
+      this.collectMode = CollectMode.MODE_STOP
+      dataParser.setCollectingMode(false)
+      dataParser.reset()
+    }
+
+    this.fullWaveData = []
+    this.sampleCount = 0
+    this.lastSampleTime = 0
   }
 
   /** 关闭设备电源 */
@@ -800,6 +856,23 @@ class BluetoothManager {
     // 停止数据解析器的波形采集模式并重置
     dataParser.setCollectingMode(false)
     dataParser.reset()
+
+    // 停止心跳保活
+    this.stopHeartBeat()
+
+    // 移除蓝牙数据监听
+    this.unregisterCharacteristicChangeListener()
+
+    // 关闭 BLE 通知
+    if (this.deviceId && this.readCharId) {
+      uni.notifyBLECharacteristicValueChange({
+        deviceId: this.deviceId,
+        serviceId: SERVICE_UUID,
+        characteristicId: this.readCharId,
+        state: false,
+        fail: () => { /* ignore */ }
+      })
+    }
   }
 }
 

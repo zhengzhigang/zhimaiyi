@@ -266,6 +266,24 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     updateDetectState()
   }
 
+  /**
+   * 静默停止检测（用户离开页面时调用）
+   * - 发送停止帧给设备
+   * - 不弹"检测完成"toast，不上传数据
+   * - 重置本地状态但保持蓝牙连接
+   */
+  async function silentStop() {
+    await bluetoothManager.silentStop()
+    updateDetectState()
+    heartRate.value = 0
+    spo2.value = 0
+    wavePoints.value = []
+    filterPoints.value = []
+    fullWaveData.value = []
+    collectProgress.value = 0
+    remainingTime.value = 0
+  }
+
   /** 关闭设备电源 */
   async function powerOff() {
     await bluetoothManager.powerOff()
@@ -361,6 +379,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     startFullDetect,
     startDetect,
     stopCollect,
+    silentStop,
     powerOff,
     uploadFullWaveData,
     resetDetect,
