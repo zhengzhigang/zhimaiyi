@@ -153,45 +153,64 @@ export class DataParser {
   }
 
   /**
-   * 解析心率血氧帧
-   * 帧格式：FRAME_HEAD + heartRate + spo2 + FRAME_TAIL（共4字节）
+   * 解析心率血氧帧（安全模式：不破坏字节对齐）
+   * 帧格式：FRAME_HEAD(0x5A) + heartRate + spo2 + FRAME_TAIL(0xA5)（共4字节）
+   *
+   * 关键设计：
+   * - 只移除确认是心率帧的4字节，其余数据一律保留给波形解析
+   * - 加入心率(30-250)/血氧(50-100)合理性校验，防止波形数据碰巧0x5A...0xA5被误识别
+   * - 找不到完整帧尾或校验不通过时，绝不丢弃字节，等待下次数据拼接
    */
   private parseHeartRateFrames() {
-    while (true) {
-      const headIdx = this.rawBuffer.indexOf(FRAME_HEAD)
-      if (headIdx === -1) break
-
-      const tailIdx = this.rawBuffer.indexOf(FRAME_TAIL, headIdx)
-      if (tailIdx === -1) break
-
-      const frameLen = tailIdx - headIdx + 1
-      if (frameLen !== 4) {
-        // 非心率血氧帧，跳过帧头继续查找
-        this.rawBuffer = this.rawBuffer.slice(headIdx + 1)
+    let i = 0
+    while (i <= this.rawBuffer.length - 4) {
+      if (this.rawBuffer[i] !== FRAME_HEAD) {
+        i++
         continue
       }
 
-      const heartRate = this.rawBuffer[headIdx + 1]
-      const spo2 = this.rawBuffer[headIdx + 2]
+      // 检查第4字节是否是帧尾
+      if (this.rawBuffer[i + 3] !== FRAME_TAIL) {
+        // 有帧头但位置不对，可能中间有波形数据，跳过这个字节继续
+        i++
+        continue
+      }
 
-      // 触发回调
+      const heartRate = this.rawBuffer[i + 1]
+      const spo2 = this.rawBuffer[i + 2]
+
+      // 合理性校验：心率30-250，血氧50-100，防止误识别波形数据为心率帧
+      const hrValid = heartRate >= 30 && heartRate <= 250
+      const spo2Valid = spo2 >= 50 && spo2 <= 100
+      if (!hrValid || !spo2Valid) {
+        i++
+        continue
+      }
+
+      // 确认是心率帧，触发回调
       this.onParse?.({ heartRate, spo2 })
 
-      // 移除已处理的帧
-      this.rawBuffer = this.rawBuffer.slice(tailIdx + 1)
+      // 移除这4个字节
+      this.rawBuffer.splice(i, 4)
+      // 不递增i，继续从当前位置检查
     }
   }
 
   /**
    * 解析波形数据
    * 数据格式：2字节大端 ADC 值（high << 8 | low）
-   * 包含异常过滤：数值越界 + 突变检测
+   *
+   * 关键设计：
+   * - 协议层不丢点！所有成对字节都转换为ADC值输出，保证时间轴连续
+   * - 只做数值越界检查（0-65535），不做突变检测（突变检测交给上层做插值处理）
+   * - 连续异常过多（字节错位）才清空缓冲区重同步
    */
   private parseWaveData() {
     if (this.rawBuffer.length < 2) return
 
     const validPair = Math.floor(this.rawBuffer.length / 2)
     const waveData = this.rawBuffer.slice(0, validPair * 2)
+    // 保留不足2字节的剩余数据，等待下次推送拼接
     this.rawBuffer = this.rawBuffer.slice(validPair * 2)
 
     const validValues: number[] = []
@@ -201,15 +220,18 @@ export class DataParser {
       const low = waveData[i + 1]
       const val = (high << 8) | low
 
-      // 异常过滤
-      if (!this.isWaveValueValid(val)) {
+      // 仅做越界检查，不做突变过滤（突变不丢点，交给上层插值）
+      if (val < ADC_MIN || val > ADC_MAX) {
         this.errorCount++
         if (this.errorCount >= MAX_CONTINUE_ERROR) {
-          // 连续异常过多，清空缓冲区重新组包
+          // 连续异常过多，说明字节错位，清空缓冲区重新组包
           this.rawBuffer = []
           this.errorCount = 0
           console.warn('连续异常数据过多，清空接收缓冲区，重新组包')
+          return
         }
+        // 越界值：用最近的有效值占位，保证点数不丢；上层会做插值
+        validValues.push(this.lastWaveValue ?? val)
         continue
       }
 
@@ -224,7 +246,7 @@ export class DataParser {
     }
   }
 
-  /**
+   /**
    * 检查波形值是否有效
    * 1. 数值越界检查：val 必须在 ADC_MIN ~ ADC_MAX 范围内
    * 2. 突变检查：与前一个值的差值不能超过 MAX_JUMP_DELTA
