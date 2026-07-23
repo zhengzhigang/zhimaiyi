@@ -105,6 +105,18 @@
               "pageOrientation": "landscape" // 强制横屏
             }
           }
+        },
+        // #endif
+        // #ifdef MP-WEIXIN
+        {
+          "path": "spo2-detect/index",
+          "type": "page",
+          "style": {
+            "navigationBarTitleText": "血氧检测",
+            "mp-weixin": {
+              "pageOrientation": "landscape" // 强制横屏
+            }
+          }
         }
         // #endif
       ]

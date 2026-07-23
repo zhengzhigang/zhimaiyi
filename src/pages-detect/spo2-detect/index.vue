@@ -64,9 +64,20 @@ const isConnected = computed(() => bluetoothStore.isConnected)
 const statusText = computed(() => {
   if (connectLoading.value) return '正在连接设备...'
   if (isDetecting.value) return '检测中...'
-  if (!isConnected.value) return '请连接设备后开始检测'
+  if (!isConnected.value) return '设备未连接，点击开始检测自动连接'
   return '准备就绪'
 })
+
+// 监听连接状态变化，断开时提示
+watch(
+  () => bluetoothStore.isConnected,
+  (connected, oldVal) => {
+    if (oldVal === true && !connected) {
+      connectLoading.value = false
+      uni.showToast({ title: '设备连接已断开', icon: 'none' })
+    }
+  },
+)
 
 /**
  * 页面离开时清理：静默停止检测，不弹"检测完成"toast
@@ -77,19 +88,11 @@ function cleanupOnExit() {
   }
 }
 
-// 监听心率血氧数据变化，更新显示
-watch(
-  () => [bluetoothStore.heartRate, bluetoothStore.spo2],
-  ([newHR, newSpo2]) => {
-    console.log('心率血氧更新:', newHR, newSpo2)
-  },
-)
-
-// 开始检测
+// 开始检测（自动重连）
 const startDetect = async () => {
   if (isDetecting.value || connectLoading.value) return
 
-  // 如果未连接，先连接设备
+  // 如果未连接，先自动连接设备
   if (!isConnected.value) {
     connectLoading.value = true
     try {
@@ -115,8 +118,15 @@ const startDetect = async () => {
   }
 
   // 开始检测（血氧模式，不上传数据）
-  uni.showToast({ title: '开始检测', icon: 'success' })
-  await bluetoothStore.startDetect('quick', true)
+  const ok = await bluetoothStore.startDetect('quick', true)
+  if (!ok) {
+    if (!isConnected.value) {
+      // 启动失败且连接已断开，自动重连
+      startDetect()
+    } else {
+      uni.showToast({ title: '启动检测失败，请重试', icon: 'none' })
+    }
+  }
 }
 
 // 停止检测

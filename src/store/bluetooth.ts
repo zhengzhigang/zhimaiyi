@@ -260,10 +260,17 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
     return ok
   }
 
-  /** 停止采集 */
+  /** 用户主动停止采集（不触发完成回调、不上传数据） */
   async function stopCollect() {
-    await bluetoothManager.stopDetect()
+    await bluetoothManager.stopDetect(false)
     updateDetectState()
+    heartRate.value = 0
+    spo2.value = 0
+    wavePoints.value = []
+    filterPoints.value = []
+    fullWaveData.value = []
+    collectProgress.value = 0
+    remainingTime.value = 0
   }
 
   /**

@@ -723,10 +723,11 @@ class BluetoothManager {
 
   /**
    * 停止检测
-   * 发送停止帧 → 清除定时器 → 触发完成回调
+   * 发送停止帧 → 清除定时器 → 可选触发完成回调
+   * 注意：不销毁 BLE 通知/监听器/心跳，保持连接以便可重新开始检测
+   * @param triggerCallback - 是否触发 onDetectComplete 回调（自动完成为true，用户主动停止为false）
    */
-  public async stopDetect(): Promise<void> {
-    // 清除定时器
+  public async stopDetect(triggerCallback = true): Promise<void> {
     if (this.progressTimer) {
       clearInterval(this.progressTimer)
       this.progressTimer = null
@@ -737,31 +738,23 @@ class BluetoothManager {
     }
 
     if (this.isDetecting) {
-      // 发送停止采集指令
-      await this.writeData(buildStopFrame())
+      if (this.isConnected) {
+        try {
+          await this.writeData(buildStopFrame())
+        } catch {
+          // ignore write errors during stop
+        }
+      }
       this.isDetecting = false
       this.collectMode = CollectMode.MODE_STOP
-      // 停止数据解析器的波形采集模式
       dataParser.setCollectingMode(false)
-      // 触发完成回调，传递完整波形数据副本
-      this.onDetectComplete?.([...this.fullWaveData])
-    }
-
-    // 停止心跳保活
-    this.stopHeartBeat()
-
-    // 移除蓝牙数据监听
-    this.unregisterCharacteristicChangeListener()
-
-    // 关闭 BLE 通知
-    if (this.deviceId && this.readCharId) {
-      uni.notifyBLECharacteristicValueChange({
-        deviceId: this.deviceId,
-        serviceId: SERVICE_UUID,
-        characteristicId: this.readCharId,
-        state: false,
-        fail: () => { /* ignore */ }
-      })
+      if (triggerCallback) {
+        this.onDetectComplete?.([...this.fullWaveData])
+      }
+      dataParser.reset()
+      this.fullWaveData = []
+      this.sampleCount = 0
+      this.lastSampleTime = 0
     }
   }
 
@@ -809,7 +802,7 @@ class BluetoothManager {
   // ========== 断开连接 ==========
   /** 断开蓝牙连接：停止检测 → 停止心跳 → 移除监听 → 关闭连接 → 关闭适配器 */
   public async disconnect(): Promise<void> {
-    await this.stopDetect()
+    await this.stopDetect(false)
     this.stopHeartBeat()
     this.unregisterConnectionStateListener()
     this.unregisterCharacteristicChangeListener()

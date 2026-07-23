@@ -138,6 +138,7 @@ const paramControls: ParamControl[] = [
 const isConnected = computed(() => bluetoothStore.isConnected)
 const progress = computed(() => bluetoothStore.collectProgress)
 const isDetecting = computed(() => bluetoothStore.isDetecting)
+const connectLoading = ref(false)
 
 const canvasStyle = computed(() => ({
   position: 'absolute',
@@ -363,42 +364,48 @@ function formatParamValue(key: WaveParamKey) {
 }
 
 async function startDetect() {
+  if (isDetecting.value || connectLoading.value) return
+
   if (!isConnected.value) {
-    uni.showModal({
-      title: '提示',
-      content: '蓝牙设备未连接，是否尝试连接？',
-      success: (res) => {
-        if (res.confirm) {
-          bluetoothStore.initAndConnect().then(() => {
-            if (isConnected.value) {
-              doStartDetect()
-            }
-          })
-        }
-      },
-    })
+    await doConnectAndStart()
     return
   }
   doStartDetect()
 }
 
+async function doConnectAndStart() {
+  connectLoading.value = true
+  try {
+    const connected = await bluetoothStore.initAndConnect()
+    connectLoading.value = false
+    if (connected) {
+      doStartDetect()
+    } else {
+      uni.showModal({
+        title: '连接失败',
+        content: '蓝牙设备连接失败，请检查蓝牙是否开启，是否重新尝试连接？',
+        success: (res) => {
+          if (res.confirm) {
+            doConnectAndStart()
+          }
+        },
+      })
+    }
+  } catch {
+    connectLoading.value = false
+    uni.showToast({ title: '连接失败', icon: 'none' })
+  }
+}
+
 async function doStartDetect() {
   resetWaveState()
   const ok = await bluetoothStore.startDetect(mode.value)
-  if (!ok && !isConnected.value) {
-    uni.showModal({
-      title: '提示',
-      content: '设备连接已断开，是否重新连接？',
-      success: (res) => {
-        if (res.confirm) {
-          bluetoothStore.initAndConnect().then(() => {
-            if (isConnected.value) {
-              doStartDetect()
-            }
-          })
-        }
-      },
-    })
+  if (!ok) {
+    if (!isConnected.value) {
+      doConnectAndStart()
+    } else {
+      uni.showToast({ title: '启动检测失败，请重试', icon: 'none' })
+    }
   }
 }
 
