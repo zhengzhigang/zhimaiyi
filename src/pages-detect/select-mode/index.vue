@@ -10,7 +10,7 @@
           <view class="detect-btn quick-btn" @click="goToGuide('quick')">
             <text class="btn-text">快速检测</text>
           </view>
-  
+
           <view class="detect-btn full-btn" @click="goToGuide('full')">
             <text class="btn-text">全面检测</text>
           </view>
@@ -21,8 +21,13 @@
 </template>
 
 <script lang="ts" setup name="SelectMode">
-
-const goToGuide = (mode: 'quick' | 'full') => {
+definePage({
+  style: {
+    navigationBarTitleText: '检测模式选择',
+    pageOrientation: 'landscape',
+  },
+})
+function goToGuide(mode: 'quick' | 'full') {
   uni.navigateTo({
     url: `/pages-detect/guide/index?mode=${mode}`,
   })

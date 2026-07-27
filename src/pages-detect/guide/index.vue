@@ -2,11 +2,7 @@
   <view>
     <view class="guide-page">
       <view class="image-container">
-        <image class="step-image" src="./images/guide-01.jpg" mode="aspectFill" />
-        <image class="step-image" src="./images/guide-02.jpg" mode="aspectFill" />
-        <image class="step-image" src="./images/guide-03.jpg" mode="aspectFill" />
-        <image class="step-image" src="./images/guide-04.jpg" mode="aspectFill" />
-        <image class="step-image" src="./images/guide-05.jpg" mode="aspectFill" />
+        <image v-for="(img, index) in imgs" :key="index" class="step-image" :src="img" mode="aspectFill" />
       </view>
 
       <view class="tip-container">
@@ -22,14 +18,27 @@
 </template>
 
 <script lang="ts" setup name="Guide">
-import { ref, watch } from 'vue'
 import { onLoad, onShow, onUnload } from '@dcloudio/uni-app'
+import { ref, watch } from 'vue'
 import { useBluetoothStore } from '@/store/bluetooth'
 
+definePage({
+  style: {
+    navigationBarTitleText: '检测引导',
+    pageOrientation: 'landscape',
+  },
+})
 const bluetoothStore = useBluetoothStore()
 const mode = ref<'quick' | 'full'>('quick')
 const loading = ref(false)
 
+const imgs = ref([
+  `${__ASSETS__}/pulse/guide-01.jpg`,
+  `${__ASSETS__}/pulse/guide-02.jpg`,
+  `${__ASSETS__}/pulse/guide-03.jpg`,
+  `${__ASSETS__}/pulse/guide-04.jpg`,
+  `${__ASSETS__}/pulse/guide-05.jpg`,
+])
 onLoad((options) => {
   if (options?.mode) {
     mode.value = options.mode === 'full' ? 'full' : 'quick'
@@ -54,8 +63,9 @@ watch(
   },
 )
 
-const startDetect = () => {
-  if (loading.value) return
+function startDetect() {
+  if (loading.value)
+    return
 
   if (!bluetoothStore.isConnected) {
     tryConnect()
@@ -65,13 +75,14 @@ const startDetect = () => {
   navigateToDetect()
 }
 
-const tryConnect = () => {
+function tryConnect() {
   loading.value = true
   bluetoothStore.initAndConnect().then((connected) => {
     loading.value = false
     if (connected) {
       navigateToDetect()
-    } else {
+    }
+    else {
       uni.showModal({
         title: '连接失败',
         content: '蓝牙设备连接失败，请检查蓝牙是否开启，是否重新尝试连接？',
@@ -88,7 +99,7 @@ const tryConnect = () => {
   })
 }
 
-const navigateToDetect = () => {
+function navigateToDetect() {
   uni.navigateTo({
     url: `/pages-detect/detect/index?mode=${mode.value}`,
   })

@@ -1,11 +1,11 @@
 import type { DetectType, UploadWaveData } from '@/utils/bluetooth/types'
-import { CollectMode } from '@/utils/bluetooth/types'
+import { defineStore } from 'pinia'
+import { computed, ref } from 'vue'
+import { uploadWaveResult } from '@/api/health/bluetooth'
 import { bluetoothManager } from '@/utils/bluetooth'
 import { prepareWaveDataForUpload } from '@/utils/bluetooth/algorithms'
-import { uploadWaveResult } from '@/api/health/bluetooth'
+import { CollectMode } from '@/utils/bluetooth/types'
 import { useUserStore } from './user'
-import { defineStore } from 'pinia'
-import { ref, computed } from 'vue'
 
 export const useBluetoothStore = defineStore('bluetooth', () => {
   // ========== 连接状态 ==========
@@ -100,14 +100,15 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
   async function initAndConnect(targetDeviceName?: string): Promise<boolean> {
     const ok = await bluetoothManager.initBluetooth()
     console.log('初始化蓝牙:', ok)
-    if (!ok) return false
+    if (!ok)
+      return false
 
     // 扫描蓝牙设备
     const devices = await bluetoothManager.startScan()
     console.log('扫描到的设备:', devices)
     // 按名称匹配目标设备，未指定则取第一个
     const target = targetDeviceName
-      ? devices.find((d) => d.deviceId?.includes(targetDeviceName))
+      ? devices.find(d => d.deviceId?.includes(targetDeviceName))
       : devices[0]
 
     if (devices.length === 0) {
@@ -134,7 +135,8 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
    */
   async function connectDevice(deviceId: string, name = ''): Promise<boolean> {
     const ok = await bluetoothManager.initBluetooth()
-    if (!ok) return false
+    if (!ok)
+      return false
     const connected = await bluetoothManager.connectDevice(deviceId, name)
     if (connected) {
       updateConnectionState()
@@ -203,7 +205,8 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
         const combined = [...current, ...points]
         if (combined.length > maxDisplay) {
           wavePoints.value = combined.slice(combined.length - maxDisplay)
-        } else {
+        }
+        else {
           wavePoints.value = combined
         }
       },
@@ -238,7 +241,8 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
               console.error('[onDetectComplete] 上传失败:', err)
             })
           }, 1000)
-        } else {
+        }
+        else {
           console.warn('[onDetectComplete] 采集数据为空，跳过上传')
         }
       },
@@ -311,7 +315,7 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
       const userStore = useUserStore()
       const payload: UploadWaveData = {
         // customerId: userStore.userInfo?.customerId || 0,
-        customerId: 506,
+        customerId: 539,
         adminUserId: 49,
         DATA: [],
         PARB: [],
@@ -325,7 +329,8 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
         uni.redirectTo({ url: `/pages-health/test-report/index?pulseId=${res.data}` })
       }
       return res
-    } catch (err) {
+    }
+    catch (err) {
       uni.hideLoading()
       console.error('波形上传失败', err)
       uni.showToast({ title: '数据上传失败', icon: 'none' })

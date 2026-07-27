@@ -1,6 +1,6 @@
 <template>
   <view class="detect-page">
-    <image class="bg-image" src="/static/images/detect/detect-bj.jpg" mode="scaleToFill" />
+    <image class="bg-image" :src="imgs[0]" mode="scaleToFill" />
 
     <view class="top-bar">
       <view class="back-btn" @click="goHome">
@@ -13,18 +13,20 @@
 
     <canvas
       v-show="!paramPanelVisible"
-      canvas-id="waveformCanvas"
       id="waveformCanvas"
+      canvas-id="waveformCanvas"
       class="waveform-canvas"
       :style="canvasStyle"
-    ></canvas>
+    />
 
     <view class="progress-center">
       <sar-progress-circle root-class="progress-circle" :percent="progress" :thickness="10" size="66rpx" color="#00D4A4" />
     </view>
 
     <view class="param-entry" @click="openParamPanel">
-      <view class="param-entry-text">调整参数</view>
+      <view class="param-entry-text">
+        调整参数
+      </view>
     </view>
 
     <sar-popup
@@ -35,15 +37,23 @@
     >
       <view class="param-panel-content">
         <view class="param-panel-header">
-          <view class="param-title">波形参数</view>
-          <view class="param-close" @click="closeParamPanel">取消</view>
+          <view class="param-title">
+            波形参数
+          </view>
+          <view class="param-close" @click="closeParamPanel">
+            取消
+          </view>
         </view>
 
         <view class="param-list">
           <view v-for="item in paramControls" :key="item.key" class="param-row">
             <view class="param-row-head">
-              <view class="param-label">{{ item.label }}</view>
-              <view class="param-value">{{ formatParamValue(item.key) }}</view>
+              <view class="param-label">
+                {{ item.label }}
+              </view>
+              <view class="param-value">
+                {{ formatParamValue(item.key) }}
+              </view>
             </view>
             <view class="param-slider-wrapper">
               <slider
@@ -52,8 +62,8 @@
                 :min="item.min"
                 :max="item.max"
                 :step="item.step"
-                activeColor="#27e0b8"
-                backgroundColor="#e0e0e0"
+                active-color="#27e0b8"
+                background-color="#e0e0e0"
                 block-color="#ffffff"
                 :block-size="18"
                 @changing="onParamSliderChange($event, item.key)"
@@ -77,16 +87,25 @@
 </template>
 
 <script lang="ts" setup name="Detect">
+import { onBackPress, onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app'
 import { computed, reactive, ref, watch } from 'vue'
-import { onLoad, onShow, onHide, onUnload, onBackPress } from '@dcloudio/uni-app'
 import { useBluetoothStore } from '@/store/bluetooth'
 import { BASELINE_WINDOW } from '@/utils/bluetooth/constants'
 
+definePage({
+  style: {
+    navigationBarTitleText: '检测中',
+    pageOrientation: 'landscape',
+  },
+})
 interface Point {
   x: number
   y: number
 }
 
+const imgs = ref([
+  `${__ASSETS__}/pulse/detect-bj.jpg`,
+])
 interface WaveParams {
   amplitudeRatio: number
   xStep: number
@@ -150,7 +169,7 @@ const canvasStyle = computed(() => ({
 
 // 监听检测状态，检测完成后立即停止绘制波形
 watch(isDetecting, (newVal, oldVal) => {
-    // 当从检测中变为非检测中时，停止波形绘制
+  // 当从检测中变为非检测中时，停止波形绘制
   if (oldVal === true && newVal === false) {
     stopDrawLoop()
   }
@@ -358,13 +377,14 @@ function onParamSliderChange(event: { detail?: { value?: number } }, key: WavePa
 }
 
 function formatParamValue(key: WaveParamKey) {
-  const control = paramControls.find((item) => item.key === key)
+  const control = paramControls.find(item => item.key === key)
   const digits = control?.digits ?? 0
   return draftParams[key].toFixed(digits)
 }
 
 async function startDetect() {
-  if (isDetecting.value || connectLoading.value) return
+  if (isDetecting.value || connectLoading.value)
+    return
 
   if (!isConnected.value) {
     await doConnectAndStart()
@@ -380,7 +400,8 @@ async function doConnectAndStart() {
     connectLoading.value = false
     if (connected) {
       doStartDetect()
-    } else {
+    }
+    else {
       uni.showModal({
         title: '连接失败',
         content: '蓝牙设备连接失败，请检查蓝牙是否开启，是否重新尝试连接？',
@@ -391,7 +412,8 @@ async function doConnectAndStart() {
         },
       })
     }
-  } catch {
+  }
+  catch {
     connectLoading.value = false
     uni.showToast({ title: '连接失败', icon: 'none' })
   }
@@ -403,7 +425,8 @@ async function doStartDetect() {
   if (!ok) {
     if (!isConnected.value) {
       doConnectAndStart()
-    } else {
+    }
+    else {
       uni.showToast({ title: '启动检测失败，请重试', icon: 'none' })
     }
   }
@@ -426,7 +449,8 @@ function goHome() {
  * - draw(false) 周期清屏：到达右边界时全量清屏+网格重绘
  */
 function startDrawLoop() {
-  if (animationTimer) return
+  if (animationTimer)
+    return
   lastDrawTime = Date.now()
   animationTimer = setInterval(() => {
     drawIncremental()
@@ -472,7 +496,8 @@ function drawIncremental() {
   if (availablePoints === 0) {
     lastDrawTime = now
     drawAccumulator = 0
-    if (cyclePoints.length >= 2) return
+    if (cyclePoints.length >= 2)
+      return
     // 还没画过任何点，仅绘制背景网格
     ctx.clearRect(0, 0, w, h)
     drawGrid(ctx, w, waveAreaX, waveAreaY, waveAreaWidth, waveAreaHeight)
@@ -481,7 +506,8 @@ function drawIncremental() {
   }
 
   // ===== 基于实际时间差的点累积（200点/秒 = 0.2点/ms）=====
-  if (lastDrawTime === 0) lastDrawTime = now
+  if (lastDrawTime === 0)
+    lastDrawTime = now
   const elapsed = Math.min(now - lastDrawTime, 100)
   lastDrawTime = now
   drawAccumulator += elapsed * 0.2
@@ -490,7 +516,8 @@ function drawIncremental() {
   drawAccumulator -= pointsToDraw
   pointsToDraw = Math.min(pointsToDraw, 8, availablePoints)
 
-  if (pointsToDraw <= 0) return
+  if (pointsToDraw <= 0)
+    return
 
   // ===== 新周期：到达右边界，重置 =====
   if (currentX >= waveAreaX + waveAreaWidth) {
@@ -502,8 +529,10 @@ function drawIncremental() {
 
   // ===== 消费数据点，转换为坐标 =====
   for (let i = 0; i < pointsToDraw; i++) {
-    if (queueReadIndex >= rawDataQueue.length) break
-    if (currentX >= waveAreaX + waveAreaWidth) break
+    if (queueReadIndex >= rawDataQueue.length)
+      break
+    if (currentX >= waveAreaX + waveAreaWidth)
+      break
 
     const rawValue = rawDataQueue[queueReadIndex++]
     const processed = normalizeWaveValue(rawValue)
@@ -518,7 +547,8 @@ function drawIncremental() {
     queueReadIndex = 0
   }
 
-  if (cyclePoints.length < 2) return
+  if (cyclePoints.length < 2)
+    return
 
   // ===== 全量重绘当前周期：保证贝塞尔曲线绝对平滑，无折线转折 =====
   ctx.clearRect(0, 0, w, h)
@@ -534,7 +564,8 @@ function drawIncremental() {
 
   if (cyclePoints.length === 2) {
     ctx.lineTo(cyclePoints[1].x, cyclePoints[1].y)
-  } else {
+  }
+  else {
     // 中点二次贝塞尔曲线：经过所有控制点，C1连续，无尖角无转折
     const m0x = (cyclePoints[0].x + cyclePoints[1].x) / 2
     const m0y = (cyclePoints[0].y + cyclePoints[1].y) / 2
@@ -558,7 +589,8 @@ function drawIncremental() {
  * 曲线经过所有数据点，C1切线连续，无尖角
  */
 function drawWavePath(ctx: UniApp.CanvasContext, points: Point[]) {
-  if (points.length < 2) return
+  if (points.length < 2)
+    return
   ctx.setStrokeStyle('rgba(39, 224, 184, 0.95)')
   ctx.setLineWidth(2)
   ctx.setLineCap('round')
@@ -569,7 +601,8 @@ function drawWavePath(ctx: UniApp.CanvasContext, points: Point[]) {
 
   if (points.length === 2) {
     ctx.lineTo(points[1].x, points[1].y)
-  } else {
+  }
+  else {
     const m0x = (points[0].x + points[1].x) / 2
     const m0y = (points[0].y + points[1].y) / 2
     ctx.lineTo(m0x, m0y)
@@ -587,7 +620,7 @@ function drawWavePath(ctx: UniApp.CanvasContext, points: Point[]) {
 /**
  * 数据处理流水线：
  *   ① 异常值处理 → ② 两级一阶IIR低通滤波 → ③ 去直流+慢漂移抑制
- * 
+ *
  * 关键设计：
  * - 两级 IIR（alpha1=0.5, alpha2=0.3）：平滑但不失真，消除毛刺和转折
  * - smoothBaseline 初始化为首个数据点，消除初始漂移
@@ -611,18 +644,21 @@ function normalizeWaveValue(value: number): number {
       lastFilterVal2 = v
       smoothBaseline.value = v
       return 0
-    } else {
+    }
+    else {
       // 线性外推：基于前两个点的斜率预测当前值，避免平线
       if (prevRawVal !== undefined && lastRawVal !== undefined) {
         const slope = lastRawVal - prevRawVal
         v = lastRawVal + slope
-      } else if (lastRawVal !== undefined) {
+      }
+      else if (lastRawVal !== undefined) {
         // 只有一个历史点，保持该值（仅前2个点可能出现）
         v = lastRawVal
       }
       // 没有历史点时用原始值（首点异常）
     }
-  } else {
+  }
+  else {
     continueErrorCount = 0
   }
 
@@ -652,7 +688,8 @@ function removeDCAndDriftWithStep(value: number) {
   if (baselineRingCount >= BASELINE_WINDOW) {
     // 满了，减去即将被覆盖的旧值
     baselineSum -= baselineRing[baselineRingHead]
-  } else {
+  }
+  else {
     baselineRingCount++
   }
   baselineRing[baselineRingHead] = value
@@ -681,7 +718,8 @@ function valueToY(value: number, waveAreaY: number, waveAreaHeight: number) {
  * 初始化绘制：画布背景 + 网格 + 刻度，数据到达前就显示
  */
 function drawCanvasBackground() {
-  if (!ctx) return
+  if (!ctx)
+    return
   const w = canvasWidth.value
   const h = canvasHeight.value
   const paddingTop = 20
@@ -770,7 +808,9 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
   padding: 8rpx 16rpx;
   border-radius: 20rpx;
   background: linear-gradient(135deg, rgba(0, 212, 164, 0.9), rgba(0, 180, 140, 0.9));
-  box-shadow: 0 2rpx 6rpx rgba(0, 212, 164, 0.3), inset 0 1rpx 0 rgba(255, 255, 255, 0.2);
+  box-shadow:
+    0 2rpx 6rpx rgba(0, 212, 164, 0.3),
+    inset 0 1rpx 0 rgba(255, 255, 255, 0.2);
   transition: all 0.3s ease;
   backdrop-filter: blur(5rpx);
 }
@@ -803,7 +843,6 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
   align-items: center;
   justify-content: center;
 }
-
 
 .progress-circle {
   :deep(.sar-progress-circle__text) {
