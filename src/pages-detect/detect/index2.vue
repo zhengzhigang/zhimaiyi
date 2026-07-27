@@ -91,17 +91,6 @@ import { onBackPress, onHide, onLoad, onShow, onUnload } from '@dcloudio/uni-app
 import { computed, reactive, ref, watch } from 'vue'
 import { useBluetoothStore } from '@/store/bluetooth'
 import { BASELINE_WINDOW } from '@/utils/bluetooth/constants'
-import mockWaveData from './data.js'
-
-// ===== Mock 模式开关：true 时使用 data.js 模拟设备数据，无需蓝牙连接 =====
-const USE_MOCK = true
-// Mock 配置：每 600ms 输出 122 个点
-const MOCK_BATCH_SIZE = 122
-const MOCK_INTERVAL = 600
-// 快速检测总时长(秒)，用于模拟进度
-const MOCK_TOTAL_SECONDS = 60
-// 200Hz 采样，60 秒共 12000 点
-const MOCK_TOTAL_POINTS = 200 * MOCK_TOTAL_SECONDS
 
 definePage({
   style: {
@@ -144,17 +133,10 @@ const canvasWidth = ref(600)
 const canvasHeight = ref(300)
 const paramPanelVisible = ref(false)
 
-// ===== Mock 模式专用状态 =====
-let mockTimer: ReturnType<typeof setInterval> | null = null
-let mockDataCursor = 0
-let mockSentPoints = 0
-const mockIsDetecting = ref(false)
-const mockCollectProgress = ref(0)
-
 const defaultParams: WaveParams = {
   amplitudeRatio: 0.6,
   xStep: 1,
-  yStep: 900,
+  yStep: 600,
   filterAlpha: 0.3,
   dcCompensationStep: 0.06,
   verticalBaseOffset: 0,
@@ -166,21 +148,21 @@ const draftParams = reactive<WaveParams>({ ...defaultParams })
 const paramControls: ParamControl[] = [
   { key: 'amplitudeRatio', label: '波形振幅', min: 0.05, max: 1.0, step: 0.05, digits: 2 },
   { key: 'xStep', label: 'x轴步长', min: 0.5, max: 2.5, step: 0.1, digits: 1 },
-  { key: 'yStep', label: 'Y轴步长', min: 200, max: 1800, step: 50, digits: 0 },
+  { key: 'yStep', label: 'Y轴步长', min: 100, max: 1000, step: 50, digits: 0 },
   { key: 'filterAlpha', label: '一阶滤波强度', min: 0.05, max: 0.6, step: 0.01, digits: 2 },
   { key: 'dcCompensationStep', label: '垂直补偿步长', min: 0.001, max: 0.08, step: 0.001, digits: 3 },
   { key: 'verticalBaseOffset', label: '垂直补偿值', min: -800, max: 800, step: 20, digits: 0 },
 ]
 
-const isConnected = computed(() => USE_MOCK ? true : bluetoothStore.isConnected)
-const progress = computed(() => USE_MOCK ? mockCollectProgress.value : bluetoothStore.collectProgress)
-const isDetecting = computed(() => USE_MOCK ? mockIsDetecting.value : bluetoothStore.isDetecting)
+const isConnected = computed(() => bluetoothStore.isConnected)
+const progress = computed(() => bluetoothStore.collectProgress)
+const isDetecting = computed(() => bluetoothStore.isDetecting)
 const connectLoading = ref(false)
 
 const canvasStyle = computed(() => ({
   position: 'absolute',
-  top: '50px',
-  left: '45rpx',
+  top: '80px',
+  left: '70rpx',
   width: `${canvasWidth.value}px`,
   height: `${canvasHeight.value}px`,
 }))
@@ -203,8 +185,6 @@ watch(isConnected, (newVal, oldVal) => {
 
 let animationTimer: ReturnType<typeof setInterval> | null = null
 let hasInitedDataHandler = false
-// 保存原始数据处理函数，mock 模式直接调用
-let rawDataHandler: ((points: number[]) => void) | null = null
 // ===== 数据处理状态 =====
 // 环形缓冲实现基线窗口：120点=0.6秒，快速响应DC漂移
 const baselineRing = new Float64Array(BASELINE_WINDOW)
@@ -273,12 +253,7 @@ onShow(() => {
 function cleanupOnExit() {
   stopDrawLoop()
   resetWaveState()
-  if (USE_MOCK) {
-    stopMockData()
-  }
-  else {
-    bluetoothStore.silentStop()
-  }
+  bluetoothStore.silentStop()
 }
 
 onHide(() => {
@@ -296,25 +271,21 @@ onBackPress(() => {
   return false
 })
 
-// 蓝牙模式下：监听 bluetoothStore.isDetecting，检测停止时停止绘制
-// mock 模式下已有 isDetecting watch（使用 mockIsDetecting），不需要重复监听
-if (!USE_MOCK) {
-  watch(
-    () => bluetoothStore.isDetecting,
-    (detecting) => {
-      if (!detecting) {
-        stopDrawLoop()
-      }
-    },
-  )
-}
+watch(
+  () => bluetoothStore.isDetecting,
+  (detecting) => {
+    if (!detecting) {
+      stopDrawLoop()
+    }
+  },
+)
 
 function initCanvas() {
   const sysInfo = uni.getSystemInfoSync()
   const screenW = Math.max(sysInfo.windowWidth, sysInfo.windowHeight)
   const screenH = Math.min(sysInfo.windowWidth, sysInfo.windowHeight)
-  canvasWidth.value = screenW - uni.upx2px(90)
-  canvasHeight.value = screenH - 70
+  canvasWidth.value = screenW - uni.upx2px(140)
+  canvasHeight.value = screenH - 110
   ctx = uni.createCanvasContext('waveformCanvas')
 
   // 先绘制画布背景、网格、刻度，不等数据到达
@@ -340,52 +311,9 @@ function initCanvas() {
       }
     }
 
-    rawDataHandler = handleRawData
-
-    if (!USE_MOCK) {
-      // 蓝牙模式：注册原始数据回调，数据到达时立即入队
-      bluetoothStore.onRawData(handleRawData)
-    }
+    // 蓝牙模式：注册原始数据回调，数据到达时立即入队
+    bluetoothStore.onRawData(handleRawData)
   }
-}
-
-// ===== Mock 模式：从 data.js 循环输出数据 =====
-function startMockData() {
-  if (mockTimer)
-    return
-  mockDataCursor = 0
-  mockSentPoints = 0
-  mockCollectProgress.value = 0
-  mockIsDetecting.value = true
-
-  const sendBatch = () => {
-    if (!rawDataHandler)
-      return
-    const totalLen = mockWaveData.length
-    const batch: number[] = []
-    for (let i = 0; i < MOCK_BATCH_SIZE; i++) {
-      batch.push(mockWaveData[mockDataCursor % totalLen])
-      mockDataCursor++
-    }
-    rawDataHandler(batch)
-
-    // 更新进度
-    mockSentPoints += MOCK_BATCH_SIZE
-    const pct = Math.min(100, Math.floor((mockSentPoints / MOCK_TOTAL_POINTS) * 100))
-    mockCollectProgress.value = pct
-  }
-
-  // 立即发第一批，然后每 600ms 发一批
-  sendBatch()
-  mockTimer = setInterval(sendBatch, MOCK_INTERVAL)
-}
-
-function stopMockData() {
-  if (mockTimer) {
-    clearInterval(mockTimer)
-    mockTimer = null
-  }
-  mockIsDetecting.value = false
 }
 
 function resetWaveState() {
@@ -401,7 +329,7 @@ function resetWaveState() {
   isFirstDataPoint = true
   rawDataQueue = []
   queueReadIndex = 0
-  currentX = 35
+  currentX = 30
   cyclePoints = []
   lastDrawTime = 0
   drawAccumulator = 0
@@ -458,21 +386,11 @@ async function startDetect() {
   if (isDetecting.value || connectLoading.value)
     return
 
-  if (USE_MOCK) {
-    doStartMockDetect()
-    return
-  }
-
   if (!isConnected.value) {
     await doConnectAndStart()
     return
   }
   doStartDetect()
-}
-
-function doStartMockDetect() {
-  resetWaveState()
-  startMockData()
 }
 
 async function doConnectAndStart() {
@@ -563,11 +481,11 @@ function drawIncremental() {
   const w = canvasWidth.value
   const h = canvasHeight.value
 
-  const paddingTop = 8
-  const paddingBottom = 12
+  const paddingTop = 20
+  const paddingBottom = 36
   const waveAreaHeight = h - paddingTop - paddingBottom
   const waveAreaY = paddingTop
-  const waveAreaX = 35
+  const waveAreaX = 30
   const waveAreaWidth = w - waveAreaX
   const xStep = appliedParams.xStep
 
@@ -793,8 +711,7 @@ function removeDCAndDriftWithStep(value: number) {
 function valueToY(value: number, waveAreaY: number, waveAreaHeight: number) {
   const centerY = waveAreaY + waveAreaHeight / 2
   const scale = (waveAreaHeight / appliedParams.yStep) * appliedParams.amplitudeRatio
-  const y = centerY + value * scale
-  return Math.max(waveAreaY, Math.min(waveAreaY + waveAreaHeight, y))
+  return centerY + value * scale
 }
 
 /**
@@ -805,11 +722,11 @@ function drawCanvasBackground() {
     return
   const w = canvasWidth.value
   const h = canvasHeight.value
-  const paddingTop = 8
-  const paddingBottom = 12
+  const paddingTop = 20
+  const paddingBottom = 36
   const waveAreaHeight = h - paddingTop - paddingBottom
   const waveAreaY = paddingTop
-  const waveAreaX = 35
+  const waveAreaX = 30
   const waveAreaWidth = w - waveAreaX
 
   drawGrid(ctx, w, waveAreaX, waveAreaY, waveAreaWidth, waveAreaHeight)
@@ -837,13 +754,13 @@ function drawGrid(
     ctx.stroke()
   }
 
-  ctx.setFillStyle('rgba(255, 255, 255, 0.6)')
+  ctx.setFillStyle('rgba(255, 255, 255, 0.5)')
   ctx.setFontSize(11)
-  ctx.setTextAlign('right')
+  ctx.setTextAlign('left')
   ctx.setTextBaseline('middle')
   const yLabels = ['100', '80', '60', '40', '20', '0']
   for (let i = 0; i < yLabels.length; i++) {
-    ctx.fillText(yLabels[i], waveAreaX - 6, waveAreaY + i * rowHeight)
+    ctx.fillText(yLabels[i], 4, waveAreaY + i * rowHeight)
   }
 }
 
