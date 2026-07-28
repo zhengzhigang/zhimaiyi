@@ -412,6 +412,7 @@ async function doConnectAndStart() {
     if (connected) {
       doStartDetect()
     }
+
     else {
       uni.showModal({
         title: '连接失败',
