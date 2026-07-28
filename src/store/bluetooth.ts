@@ -266,15 +266,24 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
 
   /** 用户主动停止采集（不触发完成回调、不上传数据） */
   async function stopCollect() {
-    await bluetoothManager.stopDetect(false)
-    updateDetectState()
+    // 先同步设置状态，防止并发调用阻塞
+    isDetecting.value = false
+    collectMode.value = CollectMode.MODE_STOP
+    isCollectingFullWave.value = false
+    collectProgress.value = 0
+    remainingTime.value = 0
     heartRate.value = 0
     spo2.value = 0
     wavePoints.value = []
     filterPoints.value = []
     fullWaveData.value = []
-    collectProgress.value = 0
-    remainingTime.value = 0
+    try {
+      await bluetoothManager.stopDetect(false)
+    }
+    catch {
+      // ignore
+    }
+    updateDetectState()
   }
 
   /**
@@ -284,15 +293,24 @@ export const useBluetoothStore = defineStore('bluetooth', () => {
    * - 重置本地状态但保持蓝牙连接
    */
   async function silentStop() {
-    await bluetoothManager.silentStop()
-    updateDetectState()
+    // 先同步设置状态，立即标记为非检测中，防止新启动检测被阻塞
+    isDetecting.value = false
+    collectMode.value = CollectMode.MODE_STOP
+    isCollectingFullWave.value = false
+    collectProgress.value = 0
+    remainingTime.value = 0
     heartRate.value = 0
     spo2.value = 0
     wavePoints.value = []
     filterPoints.value = []
     fullWaveData.value = []
-    collectProgress.value = 0
-    remainingTime.value = 0
+    try {
+      await bluetoothManager.silentStop()
+    }
+    catch {
+      // ignore
+    }
+    updateDetectState()
   }
 
   /** 关闭设备电源 */

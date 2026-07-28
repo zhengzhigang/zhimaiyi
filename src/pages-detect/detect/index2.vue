@@ -17,8 +17,6 @@
       canvas-id="waveformCanvas"
       class="waveform-canvas"
       :style="canvasStyle"
-      :width="canvasWidth"
-      :height="canvasHeight"
     />
 
     <view class="progress-center">
@@ -138,7 +136,7 @@ const paramPanelVisible = ref(false)
 const defaultParams: WaveParams = {
   amplitudeRatio: 0.6,
   xStep: 1,
-  yStep: 800,
+  yStep: 600,
   filterAlpha: 0.3,
   dcCompensationStep: 0.06,
   verticalBaseOffset: 0,
@@ -150,7 +148,7 @@ const draftParams = reactive<WaveParams>({ ...defaultParams })
 const paramControls: ParamControl[] = [
   { key: 'amplitudeRatio', label: '波形振幅', min: 0.05, max: 1.0, step: 0.05, digits: 2 },
   { key: 'xStep', label: 'x轴步长', min: 0.5, max: 2.5, step: 0.1, digits: 1 },
-  { key: 'yStep', label: 'Y轴步长', min: 200, max: 1800, step: 50, digits: 0 },
+  { key: 'yStep', label: 'Y轴步长', min: 100, max: 1000, step: 50, digits: 0 },
   { key: 'filterAlpha', label: '一阶滤波强度', min: 0.05, max: 0.6, step: 0.01, digits: 2 },
   { key: 'dcCompensationStep', label: '垂直补偿步长', min: 0.001, max: 0.08, step: 0.001, digits: 3 },
   { key: 'verticalBaseOffset', label: '垂直补偿值', min: -800, max: 800, step: 20, digits: 0 },
@@ -163,8 +161,8 @@ const connectLoading = ref(false)
 
 const canvasStyle = computed(() => ({
   position: 'absolute',
-  top: '54rpx',
-  left: '60rpx',
+  top: '80px',
+  left: '70rpx',
   width: `${canvasWidth.value}px`,
   height: `${canvasHeight.value}px`,
 }))
@@ -187,7 +185,6 @@ watch(isConnected, (newVal, oldVal) => {
 
 let animationTimer: ReturnType<typeof setInterval> | null = null
 let hasInitedDataHandler = false
-let isCleaningUp = false
 // ===== 数据处理状态 =====
 // 环形缓冲实现基线窗口：120点=0.6秒，快速响应DC漂移
 const baselineRing = new Float64Array(BASELINE_WINDOW)
@@ -230,7 +227,6 @@ onLoad((options) => {
     mode.value = options.mode === 'full' ? 'full' : 'quick'
   }
   isFirstLoad = true
-  isCleaningUp = false
   initCanvas()
   resetWaveState()
   resetDrawState()
@@ -243,60 +239,53 @@ onShow(() => {
     return
   }
   initCanvas()
-  if (isDetecting.value && isConnected.value) {
+  if (rawDataQueue.length - queueReadIndex > 0 || cyclePoints.length > 0) {
     startDrawLoop()
   }
 })
 
 /**
- * 页面离开时的完整清理函数（async，确保状态完全重置后再导航）：
+ * 页面离开时的清理函数：
  * - 立即停止绘制循环
- * - 重置波形状态
  * - 静默停止蓝牙检测（发停止帧给设备，不弹toast不上传）
+ * - 重置波形状态
  */
-async function cleanupOnExit() {
-  if (isCleaningUp) return
-  isCleaningUp = true
+function cleanupOnExit() {
   stopDrawLoop()
   resetWaveState()
-  try {
-    await bluetoothStore.silentStop()
-  }
-  catch {
-    // ignore errors during cleanup
-  }
+  bluetoothStore.silentStop()
 }
 
 onHide(() => {
-  // 页面隐藏（切后台/导航到其他页）时只暂停绘制循环，不停止检测
-  // 因为检测停止需要 await silentStop，而 onHide 中不能阻止导航
-  // 如果是真正离开页面（retry/goHome/back），由调用方主动 await cleanupOnExit
-  stopDrawLoop()
+  cleanupOnExit()
 })
 
 onUnload(() => {
-  // 页面卸载时确保完整清理（防止用户直接按系统返回键等未经过retry/goHome的情况）
-  if (!isCleaningUp) {
-    isCleaningUp = true
-    stopDrawLoop()
-    resetWaveState()
-    bluetoothStore.silentStop().catch(() => {})
-  }
+  cleanupOnExit()
   isFirstLoad = true
   hasInitedDataHandler = false
 })
 
 onBackPress(() => {
-  // 系统返回键：不阻止默认行为，让 onHide/onUnload 处理清理
+  cleanupOnExit()
   return false
 })
+
+watch(
+  () => bluetoothStore.isDetecting,
+  (detecting) => {
+    if (!detecting) {
+      stopDrawLoop()
+    }
+  },
+)
 
 function initCanvas() {
   const sysInfo = uni.getSystemInfoSync()
   const screenW = Math.max(sysInfo.windowWidth, sysInfo.windowHeight)
   const screenH = Math.min(sysInfo.windowWidth, sysInfo.windowHeight)
-  canvasWidth.value = screenW - uni.upx2px(126)
-  canvasHeight.value = screenH - uni.upx2px(94)
+  canvasWidth.value = screenW - uni.upx2px(140)
+  canvasHeight.value = screenH - 110
   ctx = uni.createCanvasContext('waveformCanvas')
 
   // 先绘制画布背景、网格、刻度，不等数据到达
@@ -340,7 +329,7 @@ function resetWaveState() {
   isFirstDataPoint = true
   rawDataQueue = []
   queueReadIndex = 0
-  currentX = 35
+  currentX = 30
   cyclePoints = []
   lastDrawTime = 0
   drawAccumulator = 0
@@ -437,27 +426,19 @@ async function doStartDetect() {
     if (!isConnected.value) {
       doConnectAndStart()
     }
-    else if (bluetoothStore.isDetecting) {
-      // 检测已经在运行（可能是快速重入场景），不需要额外操作
-    }
     else {
-      // 启动失败可能是因为停止操作还在进行，短暂延迟后重试一次
-      setTimeout(() => {
-        if (!isDetecting.value && isConnected.value) {
-          bluetoothStore.startDetect(mode.value)
-        }
-      }, 300)
+      uni.showToast({ title: '启动检测失败，请重试', icon: 'none' })
     }
   }
 }
 
-async function retryDetect() {
-  await cleanupOnExit()
+function retryDetect() {
+  cleanupOnExit()
   uni.navigateBack()
 }
 
-async function goHome() {
-  await cleanupOnExit()
+function goHome() {
+  cleanupOnExit()
   uni.reLaunch({ url: '/pages/index/index' })
 }
 
@@ -500,11 +481,13 @@ function drawIncremental() {
   const w = canvasWidth.value
   const h = canvasHeight.value
 
-  const waveAreaY = 8
-  const waveAreaHeight = h - waveAreaY
-  const waveAreaX = 35
+  const paddingTop = 20
+  const paddingBottom = 36
+  const waveAreaHeight = h - paddingTop - paddingBottom
+  const waveAreaY = paddingTop
+  const waveAreaX = 30
   const waveAreaWidth = w - waveAreaX
-  const xStep = (waveAreaWidth / 600) * appliedParams.xStep
+  const xStep = appliedParams.xStep
 
   const now = Date.now()
   const availablePoints = rawDataQueue.length - queueReadIndex
@@ -720,19 +703,15 @@ function removeDCAndDriftWithStep(value: number) {
 
 /**
  * 将信号值映射为画布 Y 坐标
- * 坐标系设计：
- *   - 刻度 100 在顶部 (y = waveAreaY)
- *   - 刻度 0 在底部 (y = waveAreaY + waveAreaHeight = canvas 底部)
- *   - 基线 value=0 对应刻度 50（垂直居中）
- *   - value>0 向上（波峰），value<0 向下（波谷）
- *   - scale = (waveAreaHeight / yStep) * amplitudeRatio
+ * 与 btsentest抑制漂移200hz.html 一致：
+ *   scale = (waveAreaHeight / yStep) * amplitudeRatio
+ *   y = centerY + value * scale
+ * 去直流后信号以 0 为中心，yStep 越大波形越小，amplitudeRatio 为额外振幅系数
  */
 function valueToY(value: number, waveAreaY: number, waveAreaHeight: number) {
-  const bottomY = waveAreaY + waveAreaHeight
-  const baselineY = waveAreaY + waveAreaHeight * 0.5
+  const centerY = waveAreaY + waveAreaHeight / 2
   const scale = (waveAreaHeight / appliedParams.yStep) * appliedParams.amplitudeRatio
-  const y = baselineY - value * scale
-  return Math.max(waveAreaY, Math.min(bottomY, y))
+  return centerY + value * scale
 }
 
 /**
@@ -743,9 +722,11 @@ function drawCanvasBackground() {
     return
   const w = canvasWidth.value
   const h = canvasHeight.value
-  const waveAreaY = 8
-  const waveAreaHeight = h - waveAreaY
-  const waveAreaX = 35
+  const paddingTop = 20
+  const paddingBottom = 36
+  const waveAreaHeight = h - paddingTop - paddingBottom
+  const waveAreaY = paddingTop
+  const waveAreaX = 30
   const waveAreaWidth = w - waveAreaX
 
   drawGrid(ctx, w, waveAreaX, waveAreaY, waveAreaWidth, waveAreaHeight)
@@ -773,24 +754,13 @@ function drawGrid(
     ctx.stroke()
   }
 
-  ctx.setFillStyle('rgba(255, 255, 255, 0.6)')
+  ctx.setFillStyle('rgba(255, 255, 255, 0.5)')
   ctx.setFontSize(11)
-  ctx.setTextAlign('right')
+  ctx.setTextAlign('left')
+  ctx.setTextBaseline('middle')
   const yLabels = ['100', '80', '60', '40', '20', '0']
   for (let i = 0; i < yLabels.length; i++) {
-    const y = waveAreaY + i * rowHeight
-    if (i === 0) {
-      ctx.setTextBaseline('top')
-      ctx.fillText(yLabels[i], waveAreaX - 6, y)
-    }
-    else if (i === yLabels.length - 1) {
-      ctx.setTextBaseline('bottom')
-      ctx.fillText(yLabels[i], waveAreaX - 6, y)
-    }
-    else {
-      ctx.setTextBaseline('middle')
-      ctx.fillText(yLabels[i], waveAreaX - 6, y)
-    }
+    ctx.fillText(yLabels[i], 4, waveAreaY + i * rowHeight)
   }
 }
 

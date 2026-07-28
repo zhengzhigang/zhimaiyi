@@ -83,6 +83,10 @@ class BluetoothManager {
   private connectionStateHandler: ((res: any) => void) | null = null
   /** 特征值变化监听器 */
   private characteristicChangeHandler: ((res: any) => void) | null = null
+  /** 防止被动断开处理递归调用 */
+  private isDisconnecting = false
+  /** 防止 stopDetect/silentStop 并发调用 */
+  private isStopping = false
 
   // ========== 采样统计 ==========
   /** 累计采样点数 */
@@ -248,8 +252,20 @@ class BluetoothManager {
   }
 
   /**
+   * 关闭蓝牙适配器（内部工具方法，用于重置状态）
+   */
+  private closeAdapterSync() {
+    try {
+      uni.closeBluetoothAdapter({ fail: () => {} })
+    } catch {
+      // ignore
+    }
+  }
+
+  /**
    * 初始化蓝牙适配器
    * 安卓系统需要先获取位置权限并开启定位服务才能打开蓝牙适配器
+   * 每次初始化前先关闭旧适配器，确保从干净状态开始（解决安卓断连后重连失败问题）
    */
   public async initBluetooth(): Promise<boolean> {
     // #ifdef MP-WEIXIN
@@ -268,15 +284,28 @@ class BluetoothManager {
     }
     // #endif
 
+    // 先关闭可能残留的适配器和监听，确保从干净状态开始
+    this.unregisterConnectionStateListener()
+    this.unregisterCharacteristicChangeListener()
+    this.closeAdapterSync()
+    // 等待一小段时间让系统释放BLE资源
+    await new Promise(resolve => setTimeout(resolve, 200))
+
+    // 防御性重置：关闭适配器后所有BLE操作已失效，重置检测标志位
+    this.isStopping = false
+    this.isDetecting = false
+    this.isDisconnecting = false
+    this.isConnected = false
+    this.collectMode = CollectMode.MODE_STOP
+    if (this.progressTimer) { clearInterval(this.progressTimer); this.progressTimer = null }
+    if (this.detectTimer) { clearTimeout(this.detectTimer); this.detectTimer = null }
+    dataParser.setCollectingMode(false)
+    dataParser.reset()
+
     return new Promise((resolve) => {
       uni.openBluetoothAdapter({
         success: () => resolve(true),
         fail: (err) => {
-          // 蓝牙适配器已经打开时不视为错误
-          if (err.errMsg?.includes('already opened')) {
-            resolve(true)
-            return
-          }
           console.error('初始化蓝牙失败', err)
           this.onError?.('初始化蓝牙失败，请检查蓝牙和定位权限')
           resolve(false)
@@ -519,13 +548,19 @@ class BluetoothManager {
   }
 
   /**
-   * 处理设备被动断开
+   * 处理设备被动断开（设备关机、超出范围等）
+   * 关键：显式关闭BLE连接释放安卓GATT资源，避免下次重连失败
    */
   private handlePassiveDisconnect() {
+    if (this.isDisconnecting) {
+      return
+    }
+    this.isDisconnecting = true
+
     console.log('设备被动断开，清理状态')
-    // 先标记为未连接，避免 stopDetect 尝试写入数据
+    // 先标记为未连接，阻止新的写入操作
     this.isConnected = false
-    // 清理检测相关状态（不发送停止帧，因为设备已断开）
+    // 无条件清理检测相关状态（不发送停止帧，因为设备已断开）
     if (this.progressTimer) {
       clearInterval(this.progressTimer)
       this.progressTimer = null
@@ -534,24 +569,40 @@ class BluetoothManager {
       clearTimeout(this.detectTimer)
       this.detectTimer = null
     }
-    if (this.isDetecting) {
-      this.isDetecting = false
-      this.collectMode = CollectMode.MODE_STOP
-      dataParser.setCollectingMode(false)
-      dataParser.reset()
-      this.fullWaveData = []
-      this.sampleCount = 0
-      this.lastSampleTime = 0
-    }
+    // 被动断开时无条件重置所有检测标志和数据
+    // 防止stopDetect/silentStop因await writeData挂起导致isStopping卡住
+    this.isDetecting = false
+    this.isStopping = false
+    this.collectMode = CollectMode.MODE_STOP
+    dataParser.setCollectingMode(false)
+    dataParser.reset()
+    this.fullWaveData = []
+    this.sampleCount = 0
+    this.lastSampleTime = 0
     this.stopHeartBeat()
     this.unregisterConnectionStateListener()
     this.unregisterCharacteristicChangeListener()
+    // 显式关闭BLE连接，释放安卓GATT底层资源（关键：不做这步安卓可能重连失败）
+    const oldDeviceId = this.deviceId
     this.deviceId = ''
     this.deviceName = ''
     this.writeCharId = ''
     this.readCharId = ''
+
+    if (oldDeviceId) {
+      try {
+        uni.closeBLEConnection({
+          deviceId: oldDeviceId,
+          fail: () => {},
+        })
+      } catch {
+        // ignore
+      }
+    }
+
     this.onConnectionChange?.(false)
     this.onError?.('设备连接已断开')
+    this.isDisconnecting = false
   }
 
   /**
@@ -627,14 +678,23 @@ class BluetoothManager {
         resolve(false)
         return
       }
+      // 超时保护：3秒内无回调则自动resolve，防止Promise挂起导致isStopping永远为true
+      const timeout = setTimeout(() => {
+        console.warn('writeData timeout, auto-resolving')
+        resolve(false)
+      }, 3000)
       uni.writeBLECharacteristicValue({
         deviceId: this.deviceId,
         serviceId: SERVICE_UUID,
         characteristicId: this.writeCharId,
         // uni-app 类型定义问题，实际需要 ArrayBuffer
         value: buffer as unknown as number[],
-        success: () => resolve(true),
+        success: () => {
+          clearTimeout(timeout)
+          resolve(true)
+        },
         fail: (err) => {
+          clearTimeout(timeout)
           console.error('写入失败', err)
           resolve(false)
         },
@@ -656,7 +716,7 @@ class BluetoothManager {
       this.onError?.('设备未连接')
       return false
     }
-    if (this.isDetecting) {
+    if (this.isDetecting || this.isStopping) {
       this.onError?.('检测正在进行中')
       return false
     }
@@ -724,6 +784,9 @@ class BluetoothManager {
    * @param triggerCallback - 是否触发 onDetectComplete 回调（自动完成为true，用户主动停止为false）
    */
   public async stopDetect(triggerCallback = true): Promise<void> {
+    if (this.isStopping) return
+    this.isStopping = true
+
     if (this.progressTimer) {
       clearInterval(this.progressTimer)
       this.progressTimer = null
@@ -733,25 +796,35 @@ class BluetoothManager {
       this.detectTimer = null
     }
 
-    if (this.isDetecting) {
-      if (this.isConnected) {
-        try {
-          await this.writeData(buildStopFrame())
-        } catch {
-          // ignore write errors during stop
-        }
-      }
+    const wasDetecting = this.isDetecting
+    const wasConnected = this.isConnected
+    if (wasDetecting) {
       this.isDetecting = false
       this.collectMode = CollectMode.MODE_STOP
       dataParser.setCollectingMode(false)
+    }
+
+    if (wasDetecting && wasConnected) {
+      try {
+        await this.writeData(buildStopFrame())
+      } catch {
+        // ignore write errors during stop
+      }
+    }
+
+    // writeData之后，如果连接已断开（被动断开），handlePassiveDisconnect已经完成了清理，
+    // 此时不应再触发onDetectComplete回调（会误弹"检测完成"toast），也不应清空可能属于新检测的数据
+    if (wasDetecting && this.isConnected) {
+      dataParser.reset()
       if (triggerCallback) {
         this.onDetectComplete?.([...this.fullWaveData])
       }
-      dataParser.reset()
       this.fullWaveData = []
       this.sampleCount = 0
       this.lastSampleTime = 0
     }
+
+    this.isStopping = false
   }
 
   /**
@@ -762,6 +835,9 @@ class BluetoothManager {
    * - 不断开蓝牙连接，保持心跳保活
    */
   public async silentStop(): Promise<void> {
+    if (this.isStopping) return
+    this.isStopping = true
+
     if (this.progressTimer) {
       clearInterval(this.progressTimer)
       this.progressTimer = null
@@ -771,23 +847,32 @@ class BluetoothManager {
       this.detectTimer = null
     }
 
-    if (this.isDetecting) {
-      if (this.isConnected) {
-        try {
-          await this.writeData(buildStopFrame())
-        } catch {
-          // ignore write errors during silent stop
-        }
-      }
+    const wasDetecting = this.isDetecting
+    const wasConnected = this.isConnected
+    if (wasDetecting) {
       this.isDetecting = false
       this.collectMode = CollectMode.MODE_STOP
       dataParser.setCollectingMode(false)
-      dataParser.reset()
     }
 
-    this.fullWaveData = []
-    this.sampleCount = 0
-    this.lastSampleTime = 0
+    if (wasDetecting && wasConnected) {
+      try {
+        await this.writeData(buildStopFrame())
+      } catch {
+        // ignore write errors during silent stop
+      }
+    }
+
+    // writeData之后，如果连接仍在（正常停止），执行清理；
+    // 如果连接已断开（被动断开），handlePassiveDisconnect已经完成清理，避免重复操作
+    if (wasDetecting && this.isConnected) {
+      dataParser.reset()
+      this.fullWaveData = []
+      this.sampleCount = 0
+      this.lastSampleTime = 0
+    }
+
+    this.isStopping = false
   }
 
   /** 关闭设备电源 */
@@ -835,7 +920,8 @@ class BluetoothManager {
       this.detectTimer = null
     }
 
-    // 重置检测状态
+    // 重置所有检测标志
+    this.isStopping = false
     this.isDetecting = false
     this.collectMode = CollectMode.MODE_STOP
     this.fullWaveData = []
