@@ -51,18 +51,14 @@
           }
         },
         // #endif
-        // #ifdef MP-WEIXIN
         {
           "path": "select-mode/index",
           "type": "page",
           "style": {
             "navigationBarTitleText": "检测模式选择",
-            "mp-weixin": {
-              "pageOrientation": "landscape" // 强制横屏
-            }
+            "pageOrientation": "landscape"
           }
         },
-        // #endif
         // #ifdef H5
         {
           "path": "guide/index",
@@ -73,18 +69,14 @@
           }
         },
         // #endif
-        // #ifdef MP-WEIXIN
         {
           "path": "guide/index",
           "type": "page",
           "style": {
-            "navigationBarTitleText": "操作引导",
-            "mp-weixin": {
-              "pageOrientation": "landscape" // 强制横屏
-            }
+            "navigationBarTitleText": "检测引导",
+            "pageOrientation": "landscape"
           }
         },
-        // #endif
         // #ifdef H5
         {
           "path": "detect/index",
@@ -95,30 +87,26 @@
           }
         },
         // #endif
-        // #ifdef MP-WEIXIN
         {
           "path": "detect/index",
           "type": "page",
           "style": {
-            "navigationBarTitleText": "波形检测",
-            "mp-weixin": {
-              "pageOrientation": "landscape" // 强制横屏
-            }
+            "navigationBarTitleText": "检测中",
+            "pageOrientation": "landscape"
           }
         },
-        // #endif
-        // #ifdef MP-WEIXIN
         {
-          "path": "spo2-detect/index",
+          "path": "detect/index2",
           "type": "page",
           "style": {
-            "navigationBarTitleText": "血氧检测",
-            "mp-weixin": {
-              "pageOrientation": "landscape" // 强制横屏
-            }
+            "navigationBarTitleText": "检测中",
+            "pageOrientation": "landscape"
           }
+        },
+        {
+          "path": "spo2-detect/index",
+          "type": "page"
         }
-        // #endif
       ]
     }
   ],

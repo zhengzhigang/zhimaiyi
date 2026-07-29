@@ -136,9 +136,9 @@ const canvasHeight = ref(300)
 const paramPanelVisible = ref(false)
 
 const defaultParams: WaveParams = {
-  amplitudeRatio: 0.6,
+  amplitudeRatio: 0.30,
   xStep: 1,
-  yStep: 800,
+  yStep: 600,
   filterAlpha: 0.3,
   dcCompensationStep: 0.06,
   verticalBaseOffset: 0,
@@ -150,7 +150,7 @@ const draftParams = reactive<WaveParams>({ ...defaultParams })
 const paramControls: ParamControl[] = [
   { key: 'amplitudeRatio', label: '波形振幅', min: 0.05, max: 1.0, step: 0.05, digits: 2 },
   { key: 'xStep', label: 'x轴步长', min: 0.5, max: 2.5, step: 0.1, digits: 1 },
-  { key: 'yStep', label: 'Y轴步长', min: 200, max: 1800, step: 50, digits: 0 },
+  { key: 'yStep', label: 'Y轴步长', min: 200, max: 1000, step: 50, digits: 0 },
   { key: 'filterAlpha', label: '一阶滤波强度', min: 0.05, max: 0.6, step: 0.01, digits: 2 },
   { key: 'dcCompensationStep', label: '垂直补偿步长', min: 0.001, max: 0.08, step: 0.001, digits: 3 },
   { key: 'verticalBaseOffset', label: '垂直补偿值', min: -800, max: 800, step: 20, digits: 0 },
@@ -720,19 +720,21 @@ function removeDCAndDriftWithStep(value: number) {
 }
 
 /**
- * 将信号值映射为画布 Y 坐标
- * 坐标系设计：
+ * 将信号值映射为画布 Y 坐标（与参考btsentest逻辑一致）
+ * 坐标系设计（canvas y=0在顶部，y增大向下）：
  *   - 刻度 100 在顶部 (y = waveAreaY)
  *   - 刻度 0 在底部 (y = waveAreaY + waveAreaHeight = canvas 底部)
  *   - 基线 value=0 对应刻度 50（垂直居中）
- *   - value>0 向上（波峰），value<0 向下（波谷）
+ *   - value<0（收缩期/脉搏波到来，ADC值低于基线）→ y减小 → 向上 → 波峰
+ *   - value>0（舒张期，ADC值高于基线）→ y增大 → 向下 → 波谷
  *   - scale = (waveAreaHeight / yStep) * amplitudeRatio
+ *   - y = baselineY + value * scale（与参考HTML一致：midY + correctedVal * scale）
  */
 function valueToY(value: number, waveAreaY: number, waveAreaHeight: number) {
   const bottomY = waveAreaY + waveAreaHeight
   const baselineY = waveAreaY + waveAreaHeight * 0.5
   const scale = (waveAreaHeight / appliedParams.yStep) * appliedParams.amplitudeRatio
-  const y = baselineY - value * scale
+  const y = baselineY + value * scale
   return Math.max(waveAreaY, Math.min(bottomY, y))
 }
 

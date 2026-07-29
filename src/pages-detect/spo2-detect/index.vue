@@ -50,6 +50,13 @@ import { ref, computed, watch } from 'vue'
 import { onUnload, onHide } from '@dcloudio/uni-app'
 import { useBluetoothStore } from '@/store/bluetooth'
 
+definePage({
+  style: {
+    navigationBarTitleText: '心率监测',
+    pageOrientation: 'landscape',
+  },
+})
+
 const bluetoothStore = useBluetoothStore()
 
 const connectLoading = ref(false)
