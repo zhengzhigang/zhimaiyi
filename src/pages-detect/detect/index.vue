@@ -4,59 +4,59 @@
 
     <view class="detect-page__content">
       <view class="detect-page__left">
-        <template v-if="!isDetecting">
-        <view class="user-info">
-          <view class="info-row">
-            <view class="info-label">
-              <image class="info-icon" src="./account.png" mode="aspectFit" />
-              <text class="info-text">姓名</text>
-            </view>
-            <input class="info-input" v-model="userInfo.name" placeholder="请输入姓名" placeholder-class="info-input__placeholder" />
-          </view>
-          <view class="info-row">
-            <view class="info-label">
-              <view class="info-icon info-icon--num">
-                <text class="info-icon-text">#</text>
+        <template>
+          <view class="user-info">
+            <view class="info-row">
+              <view class="info-label">
+                <image class="info-icon" src="./account.png" mode="aspectFit" />
+                <text class="info-text">姓名</text>
               </view>
-              <text class="info-text">编号</text>
+              <input class="info-input" v-model="userInfo.name" placeholder="请输入姓名" placeholder-class="info-input__placeholder" />
             </view>
-            <input class="info-input" v-model="userInfo.id" placeholder="请输入编号" placeholder-class="info-input__placeholder" />
-          </view>
-          <view class="info-row">
-            <view class="info-label">
-              <view class="info-icon info-icon--cake">
-                <text class="info-icon-text">🎂</text>
+            <view class="info-row">
+              <view class="info-label">
+                <view class="info-icon info-icon--num">
+                  <text class="info-icon-text">#</text>
+                </view>
+                <text class="info-text">编号</text>
               </view>
-              <text class="info-text">生日</text>
+              <input class="info-input" v-model="userInfo.id" placeholder="请输入编号" placeholder-class="info-input__placeholder" />
             </view>
-            <input class="info-input" v-model="userInfo.birthday" placeholder="请输入生日" placeholder-class="info-input__placeholder" />
-          </view>
-          <view class="info-row">
-            <view class="info-label">
-              <image class="info-icon" src="./height.png" mode="aspectFit" />
-              <text class="info-text">身高</text>
-            </view>
-            <input class="info-input" v-model="userInfo.height" placeholder="请输入身高" placeholder-class="info-input__placeholder" />
-          </view>
-          <view class="info-row">
-            <view class="info-label">
-              <view class="info-icon info-icon--weight">
-                <text class="info-icon-text">⚖</text>
+            <view class="info-row">
+              <view class="info-label">
+                <view class="info-icon info-icon--cake">
+                  <text class="info-icon-text">🎂</text>
+                </view>
+                <text class="info-text">生日</text>
               </view>
-              <text class="info-text">体重</text>
+              <input class="info-input" v-model="userInfo.birthday" placeholder="请输入生日" placeholder-class="info-input__placeholder" />
             </view>
-            <input class="info-input" v-model="userInfo.weight" placeholder="请输入体重" placeholder-class="info-input__placeholder" />
+            <view class="info-row">
+              <view class="info-label">
+                <image class="info-icon" src="./height.png" mode="aspectFit" />
+                <text class="info-text">身高</text>
+              </view>
+              <input class="info-input" v-model="userInfo.height" placeholder="请输入身高" placeholder-class="info-input__placeholder" />
+            </view>
+            <view class="info-row">
+              <view class="info-label">
+                <view class="info-icon info-icon--weight">
+                  <text class="info-icon-text">⚖</text>
+                </view>
+                <text class="info-text">体重</text>
+              </view>
+              <input class="info-input" v-model="userInfo.weight" placeholder="请输入体重" placeholder-class="info-input__placeholder" />
+            </view>
           </view>
-        </view>
 
-        <view class="start-btn" :class="{ 'start-btn--active': isCountingDown }" @click="handleStart">
-          <div v-if="isDetecting" class="loader">
+          <view class="start-btn" :class="{ 'start-btn--active': isCountingDown }">
+          <div class="loader">
             <div class="face"></div>
           </div>
           <image class="start-btn__border" src="./btn-border.png" mode="scaleToFill" />
           <image class="start-btn__bg" src="./btn.png" mode="scaleToFill" />
           <view class="start-btn__content">
-            <text class="start-btn__text">开始</text>
+            <text class="start-btn__text">{{ progress }}</text>
           </view>
         </view>
         </template>
@@ -88,9 +88,9 @@
       </view>
     </view>
 
-    <view class="progress-center">
+    <!-- <view class="progress-center">
       <sar-progress-circle root-class="progress-circle" :percent="progress" :thickness="10" size="66rpx" color="#00D4A4" />
-    </view>
+    </view> -->
 
     <view class="param-entry" @click="openParamPanel">
       <view class="param-entry-text">
@@ -237,48 +237,16 @@ const userInfo = reactive({
   weight: '',
 })
 
-// ===== 倒计时 =====
-const countdown = ref(0)
 const isCountingDown = ref(false)
-let countdownTimer: ReturnType<typeof setInterval> | null = null
-
-function handleStart() {
-  if (isCountingDown.value) return
-  if (!userInfo.name || !userInfo.id || !userInfo.birthday || !userInfo.height || !userInfo.weight) {
-    uni.showToast({ title: '请填写完整信息', icon: 'none' })
-    return
-  }
-  if (countdownTimer) {
-    clearInterval(countdownTimer)
-    countdownTimer = null
-  }
-  isCountingDown.value = true
-  countdown.value = 3
-  uni.showToast({ title: `${countdown.value}`, icon: 'none', duration: 1000 })
-  countdownTimer = setInterval(() => {
-    countdown.value--
-    if (countdown.value > 0) {
-      uni.showToast({ title: `${countdown.value}`, icon: 'none', duration: 1000 })
-    }
-    else {
-      if (countdownTimer) {
-        clearInterval(countdownTimer)
-        countdownTimer = null
-      }
-      isCountingDown.value = false
-      startDetect()
-    }
-  }, 1000)
-}
 
 const canvasStyle = computed(() => ({
   position: 'absolute',
-  top: '46rpx',
+  top: '41rpx',
   left: '12rpx',
   width: `${canvasWidth.value}px`,
   height: `${canvasHeight.value}px`,
   background: 'linear-gradient(180deg, #55d6db 0%, #108a90 100%)',
-  borderRadius: '12rpx',
+  borderRadius: '10rpx',
 }))
 
 // 监听检测状态，检测完成后立即停止绘制波形
@@ -346,6 +314,7 @@ onLoad((options) => {
   initCanvas()
   resetWaveState()
   resetDrawState()
+  startDetect()
 })
 
 onShow(() => {
@@ -393,12 +362,6 @@ onUnload(() => {
     resetWaveState()
     bluetoothStore.silentStop().catch(() => {})
   }
-  if (countdownTimer) {
-    clearInterval(countdownTimer)
-    countdownTimer = null
-  }
-  isCountingDown.value = false
-  countdown.value = 0
   isFirstLoad = true
   hasInitedDataHandler = false
 })
@@ -412,8 +375,8 @@ function initCanvas() {
   const sysInfo = uni.getSystemInfoSync()
   const screenW = Math.max(sysInfo.windowWidth, sysInfo.windowHeight)
   const screenH = Math.min(sysInfo.windowWidth, sysInfo.windowHeight)
-  canvasWidth.value = screenW - uni.upx2px(320)
-  canvasHeight.value = screenH - uni.upx2px(60)
+  canvasWidth.value = screenW - uni.upx2px(291)
+  canvasHeight.value = screenH - uni.upx2px(88)
   ctx = uni.createCanvasContext('waveformCanvas')
 
   // 先绘制画布背景、网格、刻度，不等数据到达
@@ -950,9 +913,9 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    width: 260rpx;
+    width: 250rpx;
     height: 100%;
-    padding: 30rpx 20rpx;
+    padding: 30rpx 20rpx 10rpx 42rpx;
     box-sizing: border-box;
     z-index: 10;
   }
@@ -966,7 +929,7 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
   &__bg {
     position: absolute;
     z-index: 1;
-    left: 20rpx;
+    left: 0;
     top: 20rpx;
     right: 20rpx;
     bottom: 20rpx;
@@ -982,7 +945,7 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 3rpx;
+  padding: 2rpx 0;
 }
 
 .info-label {
@@ -993,8 +956,8 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
 }
 
 .info-icon {
-  width: 22rpx;
-  height: 22rpx;
+  width: 20rpx;
+  height: 20rpx;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1023,8 +986,8 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
 
 .info-input {
   flex: 1;
-  max-width: 120rpx;
-  height: 28rpx;
+  max-width: 110rpx;
+  height: 26rpx;
   padding: 0 6rpx;
   margin-left: 8rpx;
   font-size: 10rpx;
@@ -1061,7 +1024,7 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
       color: #ff9500;
       font-size: 14rpx;
       font-weight: bold;
-    }
+      }
   }
 
   &__border,
@@ -1102,26 +1065,27 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
     justify-content: center;
     width: 100%;
     height: 100%;
+    flex-shrink: 0;
   }
 
   &__text {
     font-size: 16rpx;
     font-weight: bold;
-    color: #ba7b59;
-    letter-spacing: 6rpx;
-    text-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.3);
+    letter-spacing: 4rpx;
     text-align: center;
-    font-family: LCDN;
+    font-family: 'Courier New', monospace;
     color: transparent;
-    background-image: linear-gradient(90deg, rgba(215, 163, 140, 1), rgba(172, 104, 68, 1));
+    background-image: linear-gradient(180deg, #e6b89c, #a05c38);
     background-clip: text;
+    -webkit-background-clip: text;
+    text-shadow: 0 0 6rpx rgba(200, 120, 70, 0.5);
   }
-}
+  }
 
 .top-bar {
   position: absolute;
   top: 12px;
-  left: 30px;
+  left: 270px;
   right: 30px;
   display: flex;
   justify-content: space-between;
@@ -1301,18 +1265,18 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
 
   .face {
     position: absolute;
-    left: 9rpx;
-    top: 9rpx;
+    left: 7rpx;
+    top: 7rpx;
     border-radius: 50%;
     border-style: solid;
     animation: animate 1s linear infinite;
     z-index: 9;
-  }
+    }
 
   .face:nth-child(1) {
-    width: 66rpx;
-    height: 66rpx;
-    color: lime;
+    width: 70rpx;
+    height: 70rpx;
+    color: #27e0b8;
     border-color: currentColor currentColor transparent transparent;
     border-width: 4rpx 0 0 4rpx;
     --deg: -135deg;
