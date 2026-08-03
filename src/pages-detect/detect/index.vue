@@ -11,35 +11,49 @@
               <image class="info-icon" src="./name.png" mode="aspectFit" />
               <text class="info-text">姓名</text>
             </view>
-            <input class="info-input" v-model="userInfo.name" placeholder="请输入姓名" placeholder-class="info-input__placeholder" />
+            <input class="info-input" v-model="userInfo.username" placeholder="请输入姓名" disabled placeholder-class="info-input__placeholder" />
           </view>
           <view class="info-row">
             <view class="info-label">
               <image class="info-icon" src="./account.png" mode="aspectFit" />
               <text class="info-text">编号</text>
             </view>
-            <input class="info-input" v-model="userInfo.id" placeholder="请输入编号" placeholder-class="info-input__placeholder" />
+            <input class="info-input" v-model="userInfo.id" placeholder="请输入编号" disabled placeholder-class="info-input__placeholder" />
           </view>
           <view class="info-row">
             <view class="info-label">
               <image class="info-icon" src="./year.png" mode="aspectFit" />
               <text class="info-text">生日</text>
             </view>
-            <input class="info-input" v-model="userInfo.birthday" placeholder="请输入生日" placeholder-class="info-input__placeholder" />
+            <input class="info-input" v-model="userInfo.birthday" placeholder="请输入生日" disabled placeholder-class="info-input__placeholder" />
           </view>
           <view class="info-row">
             <view class="info-label">
               <image class="info-icon" src="./height.png" mode="aspectFit" />
               <text class="info-text">身高</text>
             </view>
-            <input class="info-input" v-model="userInfo.height" placeholder="请输入身高" placeholder-class="info-input__placeholder" />
+            <input class="info-input" v-model="userInfo.height" placeholder="请输入身高" disabled placeholder-class="info-input__placeholder" />
           </view>
           <view class="info-row">
             <view class="info-label">
               <image class="info-icon" src="./height.png" mode="aspectFit" />
               <text class="info-text">体重</text>
             </view>
-            <input class="info-input" v-model="userInfo.weight" placeholder="请输入体重" placeholder-class="info-input__placeholder" />
+            <input class="info-input" v-model="userInfo.weight" placeholder="请输入体重" disabled placeholder-class="info-input__placeholder" />
+          </view>
+          <view class="info-row info-row--gender">
+            <view class="info-label">
+            </view>
+            <view class="gender-radio-group">
+              <view class="gender-radio">
+                <image class="gender-radio__icon" :src="userInfo.sex === 1 ? '/static/images/detect/selected.png' : '/static/images/detect/unselected.png'" mode="aspectFit" />
+                <text class="gender-radio__text">男</text>
+              </view>
+              <view class="gender-radio">
+                <image class="gender-radio__icon" :src="userInfo.sex === 2 ? '/static/images/detect/selected.png' : '/static/images/detect/unselected.png'" mode="aspectFit" />
+                <text class="gender-radio__text">女</text>
+              </view>
+            </view>
           </view>
         </view>
       </view>
@@ -212,11 +226,12 @@ const connectLoading = ref(false)
 
 // ===== 用户基本信息 =====
 const userInfo = reactive({
-  name: '',
-  id: '',
-  birthday: '',
-  height: '',
-  weight: '',
+  username: '大张伟',
+  id: 'C000008765',
+  birthday: '1992年03月12日',
+  height: '178cm',
+  weight: '74kg',
+  sex: 1,
 })
 
 const isCountingDown = ref(false)
@@ -899,7 +914,7 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
     justify-content: center;
     width: 250rpx;
     height: 100%;
-    padding: 30rpx 20rpx 10rpx 42rpx;
+    padding: 10rpx 20rpx 10rpx 42rpx;
     box-sizing: border-box;
     z-index: 10;
   }
@@ -928,14 +943,39 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
 .info-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 2rpx 0;
+  padding: 3rpx 0;
+}
+
+.gender-radio {
+  display: flex;
+  align-items: center;
+  gap: 4rpx;
+
+  &-group {
+    display: flex;
+    gap: 16rpx;
+    margin-left: 8rpx;
+  }
+
+  &__icon {
+    width: 22rpx;
+    height: 22rpx;
+    flex-shrink: 0;
+  }
+
+  &__text {
+    font-size: 12rpx;
+    color: #333;
+    font-weight: 500;
+    letter-spacing: 2rpx;
+  }
 }
 
 .info-label {
   display: flex;
   align-items: center;
   gap: 6rpx;
+  width: 60rpx;
   flex-shrink: 0;
 }
 
@@ -948,10 +988,10 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
 }
 
 .info-logo {
-  height: 34rpx;
+  height: 30rpx;
   width: auto;
   margin: auto;
-  margin-bottom: 20rpx;
+  margin-bottom: 16rpx;
 }
 
 .info-icon-text {
@@ -961,7 +1001,7 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
 }
 
 .info-text {
-  font-size: 10rpx;
+  font-size: 12rpx;
   color: #333;
   font-weight: 500;
   letter-spacing: 2rpx;
@@ -988,8 +1028,8 @@ function drawLeadingDot(ctx: UniApp.CanvasContext, point: Point) {
 
 .top-bar {
   position: absolute;
-  top: 12px;
-  left: 270px;
+  top: 10px;
+  left: 30rpx;
   right: 30px;
   display: flex;
   justify-content: space-between;
